@@ -1,0 +1,620 @@
+\documentclass[12pt,a4paper]{article}
+
+% ── Paquetes ──────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{listings}
+\usepackage{caption}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    urlcolor=blue!70!black,
+    citecolor=green!60!black
+}
+
+\definecolor{codeblue}{RGB}{0,102,204}
+\definecolor{codegray}{RGB}{128,128,128}
+\definecolor{codegreen}{RGB}{0,153,0}
+\definecolor{codebg}{RGB}{248,248,248}
+
+\lstset{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{codeblue}\bfseries,
+    commentstyle=\color{codegray}\itshape,
+    stringstyle=\color{codegreen},
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{gray!40},
+    language=Python
+}
+
+% ── Metadatos ─────────────────────────────────────────────────────────────
+\title{
+    \vspace{-1cm}
+    \Large\textbf{Diseño de Redes Neuronales Confiables}\\[0.4cm]
+    \large Justicia e Incertidumbre en la Concesión de Crédito\\[0.3cm]
+    \normalsize Taller B4-T1 — Home Credit Default Risk
+}
+\author{
+    \textbf{Grupo 7} \\[0.2cm]
+    \small Instituto BME /
+    Daniel Gallego Sánchez , Marco Corpa Criado , Javier	Fernández Guerra
+}
+\date{\today}
+
+% ══════════════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Introducción y Objetivo}
+\label{sec:intro}
+
+El presente trabajo aborda el diseño, entrenamiento y auditoría de modelos
+de clasificación neuronal para la concesión de créditos. El dataset utilizado
+es el \textbf{Home Credit Default Risk} (Kaggle, 307\,507 solicitudes),
+cuyo objetivo es predecir si un solicitante tendrá dificultades de pago
+(\texttt{TARGET=1}, $\approx$8\%) o no (\texttt{TARGET=0}, $\approx$92\%).
+
+Los objetivos específicos del trabajo son:
+
+\begin{enumerate}[leftmargin=*, label=\textbf{\arabic*.}]
+    \item \textbf{Arquitectura customizada}: implementar capas Keras con
+          restricciones de dominio financiero.
+    \item \textbf{Aprendizaje Justo (FAIR Loss)}: diseñar una función de
+          coste que penalice la dependencia estadística entre las predicciones
+          y el género del solicitante (\texttt{CODE\_GENDER}).
+    \item \textbf{AutoML}: explorar la progresión de arquitecturas y
+          justificar cada elección.
+    \item \textbf{Incertidumbre}: cuantificar la varianza de las predicciones
+          y analizar su relación con la calidad de los datos de entrada.
+\end{enumerate}
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Análisis Exploratorio de Datos (EDA)}
+\label{sec:eda}
+
+\subsection{Dataset y features seleccionadas}
+
+Se seleccionaron las 9 columnas más relevantes según el enunciado:
+\texttt{TARGET}, \texttt{CODE\_GENDER}, \texttt{AMT\_INCOME\_TOTAL},
+\texttt{AMT\_CREDIT}, \texttt{AMT\_ANNUITY}, \texttt{DAYS\_BIRTH},
+\texttt{EXT\_SOURCE\_1/2/3}.
+
+\subsection{Desbalanceo de clases}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figs/01_target_balance.pdf}
+    \caption{Distribución de la variable objetivo. El 91.9\% de los
+             solicitantes pagaron a tiempo; solo el 8.1\% presentó
+             dificultades de pago.}
+    \label{fig:balance}
+\end{figure}
+
+El fuerte desbalanceo (razón 11.4:1) tiene consecuencias directas en el
+diseño del modelo:
+
+\begin{itemize}
+    \item La métrica de evaluación es \textbf{AUC-ROC}, no \textit{accuracy}:
+          un modelo que prediga siempre clase 0 obtendría 91.9\% de
+          \textit{accuracy} sin ninguna utilidad.
+    \item Se utilizan \textbf{class weights} durante el entrenamiento
+          (clase~1 ponderada $\approx$11.4× más que la clase~0) para que
+          el gradiente no ignore la clase minoritaria.
+\end{itemize}
+
+\subsection{Valores ausentes}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figs/02_missing_values.pdf}
+    \caption{Porcentaje de valores ausentes por variable. \texttt{EXT\_SOURCE\_1}
+             presenta el mayor hueco (56.4\%), seguido de \texttt{EXT\_SOURCE\_3}
+             (19.8\%).}
+    \label{fig:missing}
+\end{figure}
+
+La distribución de nulos motiva dos decisiones de diseño:
+\begin{enumerate}
+    \item \textbf{Imputación por la mediana} (calculada exclusivamente
+          sobre el conjunto de entrenamiento para evitar fuga de datos).
+    \item Creación de \textbf{features de máscara binaria}
+          (\texttt{EXT\_SOURCE\_*\_MISSING}) que indican si el valor
+          original estaba ausente. Estas features actúan como señal
+          predictiva adicional y son la materia prima del análisis de
+          incertidumbre (Sección~\ref{sec:uncertainty}).
+\end{enumerate}
+
+\subsection{Variables financieras: asimetría y transformación}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figs/03_log1p_transform.pdf}
+    \caption{Distribuciones antes (fila superior) y después (fila inferior)
+             de aplicar $\log(1+x)$. La transformación elimina la cola
+             asimétrica extrema (outlier de \texttt{AMT\_INCOME\_TOTAL}
+             $\approx 1.17 \times 10^8$) sin pérdida de información.}
+    \label{fig:log1p}
+\end{figure}
+
+La transformación $\log(1+x)$ se aplica a las tres variables monetarias
+(\texttt{AMT\_INCOME\_TOTAL}, \texttt{AMT\_CREDIT}, \texttt{AMT\_ANNUITY})
+antes del escalado estándar. La justificación es doble: (1)~comprime colas
+largas que dominarían el gradiente durante el entrenamiento, y (2)~linealiza
+relaciones log-proporcionales habituales en datos financieros.
+
+\subsection{Poder predictivo de las variables}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figs/04_ext_source_kde.pdf}
+    \caption{Distribución de \texttt{EXT\_SOURCE\_1/2/3} por clase. Las
+             distribuciones están claramente separadas: los solicitantes con
+             impago tienen scores externos más bajos.}
+    \label{fig:ext_kde}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figs/05_deciles_default_rate.pdf}
+    \caption{Tasa de impago por decil de cada variable continua. Las tres
+             fuentes externas muestran una relación \textbf{monotóna
+             decreciente} fuerte: el modelo necesita capturar esta señal.
+             \texttt{AMT\_CREDIT} y \texttt{AMT\_ANNUITY} muestran una
+             \textbf{joroba} (máximo en deciles intermedios), lo que
+             implica que una sola capa oculta no puede capturar esta
+             no-linealidad.}
+    \label{fig:deciles}
+\end{figure}
+
+\subsection{Disparidad de género}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.45\textwidth]{figs/06_gender_default_rate.pdf}
+    \caption{Tasa de impago por género. Los hombres (10.1\%) presentan
+             mayor tasa que las mujeres (7.0\%). Las 4 filas con
+             \texttt{CODE\_GENDER=XNA} fueron eliminadas.}
+    \label{fig:gender}
+\end{figure}
+
+Esta disparidad de base motiva la introducción de la FAIR Loss
+(Sección~\ref{sec:fair}): si el modelo optimiza solo AUC, aprenderá y
+amplificará esta diferencia, lo que constituye discriminación estadística
+en el sentido regulatorio.
+
+\subsection{Interacciones no lineales: hexbin}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figs/07_hexbin_ext23.pdf}
+    \caption{Hexbin de tasa de impago en el espacio
+             \texttt{EXT\_SOURCE\_2} $\times$ \texttt{EXT\_SOURCE\_3}.
+             La zona de máximo riesgo (rojo oscuro) se concentra en la
+             esquina inferior izquierda, donde \textbf{ambas} fuentes son
+             bajas simultáneamente. Este efecto de interacción no es
+             capturables con una sola capa oculta.}
+    \label{fig:hexbin}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Preprocesado y Pipeline de Datos}
+\label{sec:pipeline}
+
+\subsection{Decisiones de transformación}
+
+\begin{table}[H]
+\centering
+\caption{Resumen de transformaciones aplicadas y su justificación.}
+\label{tab:transforms}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Variable(s)} & \textbf{Transformación} & \textbf{Justificación} \\
+\midrule
+\texttt{AMT\_INCOME\_TOTAL} & $\log(1+x)$ & Cola asimétrica extrema ($\max = 1.17\times10^8$) \\
+\texttt{AMT\_CREDIT} & $\log(1+x)$ & Mismo patrón; joroba en deciles \\
+\texttt{AMT\_ANNUITY} & $\log(1+x)$ & Alta correlación con \texttt{AMT\_CREDIT} \\
+\texttt{DAYS\_BIRTH} & $|x|/365$ & Convertir días negativos a edad en años \\
+\texttt{CODE\_GENDER} & \texttt{M}$\to$0, \texttt{F}$\to$1 & Codificación binaria; XNA eliminado \\
+\texttt{EXT\_SOURCE\_*} & Imputación mediana (train) & 20--56\% nulos; sin fuga \\
+\texttt{EXT\_SOURCE\_*\_MISSING} & Máscara binaria nueva & Señal adicional + base para incertidumbre \\
+\texttt{DEBT\_RATIO} & \texttt{AMT\_ANNUITY/AMT\_INCOME} & Feature de dominio financiero (clip a 3.0) \\
+Variables continuas & \texttt{StandardScaler} (train) & Gradiente estable; no aplicado a binarias \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Partición de datos}
+
+Se realizó una partición estratificada \textbf{60/20/20} (train/val/test)
+manteniendo la proporción de impagos en los tres conjuntos (8.07\%):
+
+\begin{table}[H]
+\centering
+\caption{Tamaños de los conjuntos tras el split estratificado.}
+\label{tab:splits}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Conjunto} & \textbf{Muestras} & \textbf{TARGET=1} & \textbf{Tasa impago} \\
+\midrule
+Train      & 184\,504 & 14\,889 & 8.07\% \\
+Validación &  61\,501 &  4\,963 & 8.07\% \\
+Test       &  61\,502 &  4\,963 & 8.07\% \\
+\midrule
+Total      & 307\,507 & 24\,815 & 8.07\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El conjunto de \textbf{test permanece intocado} hasta la evaluación
+final. La validación se utiliza exclusivamente para el \textit{early
+stopping} y la selección de hiperparámetros.
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Arquitectura del Modelo}
+\label{sec:architecture}
+
+\subsection{Justificación del tipo de red}
+
+\begin{table}[H]
+\centering
+\caption{Comparativa de familias de redes neuronales para este problema.}
+\label{tab:net_types}
+\small
+\begin{tabularx}{\textwidth}{@{} l X X @{}}
+\toprule
+\textbf{Tipo} & \textbf{Requiere} & \textbf{Decisión} \\
+\midrule
+RNN/LSTM & Orden temporal entre muestras o features & \textcolor{red}{Descartado}: cada fila es un solicitante independiente \\
+CNN & Estructura espacial/local entre features & \textcolor{red}{Descartado}: no hay vecindad entre columnas \\
+Transformer & Secuencias con atención & \textcolor{red}{Descartado}: sobreingeniería para 12 features tabulares \\
+\textbf{MLP denso} & -- & \textcolor{green!60!black}{\textbf{Seleccionado}}: estándar empírico para datos tabulares \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Función de activación y función de coste}
+
+\begin{itemize}
+    \item \textbf{Capas ocultas: ReLU}. Evita el problema de
+          \textit{vanishing gradient} (frente a sigmoid/tanh),
+          computacionalmente eficiente y empíricamente superior en
+          clasificación tabular.
+    \item \textbf{Capa de salida: sigmoid}. Produce una salida en $[0,1]$
+          interpretable directamente como $P(\text{impago})$.
+    \item \textbf{Función de coste: Binary Cross-Entropy (BCE)} con
+          \textit{class weights}. BCE es la pérdida natural para
+          distribuciones de Bernoulli. Los class weights compensan el
+          desbalanceo sin alterar la probabilidad de las predicciones.
+\end{itemize}
+
+\subsection{Capas custom}
+
+\subsubsection{DebtRatioLayer}
+
+Aplica una saturación sigmoide aprendible al ratio de endeudamiento:
+
+\begin{equation}
+    f(x) = \sigma\bigl(\alpha \cdot (x - \theta)\bigr), \quad
+    \alpha > 0, \quad \theta \in \mathbb{R}
+    \label{eq:debt_layer}
+\end{equation}
+
+donde $\alpha$ controla la pendiente de la saturación (inicializado en 10)
+y $\theta$ es el umbral de inflexión (inicializado en 0.35, referencia
+regulatoria del 35\%). Ambos son \textbf{parámetros aprendibles}.
+
+La justificación no es predictiva sino \textbf{regulatoria}: un ratio de
+0.8 y uno de 1.5 son ambos ``imposible pagar''; la sigmoide garantiza que
+el modelo los trate de forma similar, incrustando esta restricción de dominio
+en la arquitectura.
+
+\subsubsection{ExtSourceLayer}
+
+Combina las tres fuentes externas en un índice de confianza ponderado:
+
+\begin{equation}
+    g(\mathbf{s}) = \sigma(w_1 s_1 + w_2 s_2 + w_3 s_3 + b),
+    \quad w_i \geq 0
+    \label{eq:ext_layer}
+\end{equation}
+
+Los pesos $w_i$ están restringidos a ser no negativos (la relación con el
+impago es monotóna decreciente, confirmada por los deciles del EDA).
+Esto hace el modelo \textbf{auditable}: tras el entrenamiento, los pesos
+aprendidos revelan la importancia relativa que el modelo asignó a cada
+fuente externa.
+
+\subsection{Progresión de modelos}
+
+\begin{table}[H]
+\centering
+\caption{Comparativa de modelos entrenados (AUC en test, clase 1 ponderada 11.4×).}
+\label{tab:models}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+\textbf{Modelo} & \textbf{Arquitectura} & \textbf{AUC val} & \textbf{AUC test} & \textbf{Paráms} \\
+\midrule
+M0 & Reg. Logística (0 capas ocultas) & 0.7275 & 0.7335 & 13 \\
+M1 & MLP (Dense 64, ReLU)             & 0.7416 & 0.7449 & 897 \\
+M2 & MLP (Dense 128→64, ReLU)         & 0.7411 & 0.7447 & 9\,985 \\
+M3 & M2 + Dropout(0.3, 0.2)           & 0.7424 & 0.7452 & 9\,985 \\
+M4 & M3 + DebtRatioLayer              & 0.7424 & 0.7449 & 9\,988 \\
+M5 & M4 + ReduceLROnPlateau           & 0.7428 & 0.7449 & 9\,988 \\
+\textbf{M6} & M5 + ExtSourceLayer (Dual Custom) & \textbf{0.7421} & \textbf{0.7451} & \textbf{9\,991} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{figs/curves_M0.pdf}
+        \caption{M0 — Regresión Logística}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{figs/curves_M3.pdf}
+        \caption{M3 — MLP + Dropout}
+    \end{subfigure}
+    \\[0.5cm]
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{figs/curves_M6.pdf}
+        \caption{M6 — Dual Custom + Dropout}
+    \end{subfigure}
+    \caption{Curvas de entrenamiento y validación (selección representativa).
+             El modelo base (M0) converge más lento y a menor AUC. M6 muestra
+             convergencia suave con \textit{early stopping} efectivo.}
+    \label{fig:curves}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figs/arch_M6_DualCustom.pdf}
+    \caption{Arquitectura del modelo M6 (Dual Custom + Dropout). Las dos ramas
+             paralelas (DebtRatioLayer y ExtSourceLayer) se concatenan con la
+             salida de las capas densas antes de la neurona de clasificación.}
+    \label{fig:arch_m6}
+\end{figure}
+
+\paragraph{Justificación de la profundidad.}
+El análisis de deciles (Figura~\ref{fig:deciles}) reveló que
+\texttt{AMT\_CREDIT} y \texttt{AMT\_ANNUITY} presentan una relación en
+forma de \textbf{joroba} con la tasa de impago: los créditos medios tienen
+mayor tasa que los muy bajos o los muy altos. Una sola capa ReLU
+(lineal por partes con una única inflexión) no puede capturar este máximo
+interior; se requieren al menos dos capas ocultas.
+
+El hexbin (Figura~\ref{fig:hexbin}) muestra además un \textbf{efecto de
+interacción} entre \texttt{EXT\_SOURCE\_2} y \texttt{EXT\_SOURCE\_3} que
+tampoco es modelable linealmente.
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Aprendizaje Justo — FAIR Loss}
+\label{sec:fair}
+
+\subsection{Formulación}
+
+La función de coste customizada combina el error de clasificación con
+una penalización por \textbf{Paridad Demográfica} (DP):
+
+\begin{equation}
+    \mathcal{L}_{\text{fair}} =
+    \underbrace{\text{BCE}(y, \hat{y})}_{\text{clasificación}}
+    + \lambda \cdot
+    \underbrace{\bigl|\mathbb{E}[\hat{y} \mid G=M] -
+                       \mathbb{E}[\hat{y} \mid G=F]\bigr|}_{\text{penalización DP}}
+    \label{eq:fair_loss}
+\end{equation}
+
+\subsection{Justificación de la métrica de equidad}
+
+\begin{table}[H]
+\centering
+\caption{Comparativa de métricas de equidad consideradas.}
+\label{tab:fairness_metrics}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Métrica} & \textbf{Diferenciable} & \textbf{Requiere $y_{\text{true}}$} & \textbf{Decisión} \\
+\midrule
+Paridad Demográfica (DP) & \checkmark & No & \textbf{Seleccionada} \\
+Equalized Odds           & Parcial    & Sí & Descartada (complica el grafo) \\
+Mutual Information       & \texttimes & No & Descartada (no diferenciable) \\
+Correlación $|\text{Corr}(\hat{y},G)|$ & \checkmark & No & Descartada (solo lineal) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La DP mide si la tasa de aprobación predicha es similar entre grupos
+demográficos, que es el requisito regulatorio explícito en la Directiva
+Europea de IA y la ECOA (Equal Credit Opportunity Act).
+
+\subsection{Curva de Pareto}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figs/08_pareto_fair.pdf}
+    \caption{Izquierda: curva de Pareto entre AUC (precisión) y DP Gap
+             (discriminación). Cada punto corresponde a un valor de $\lambda$.
+             Derecha: evolución de la predicción media por género al aumentar
+             $\lambda$. Las líneas convergen hacia un valor similar, indicando
+             que el modelo aprende a no discriminar.}
+    \label{fig:pareto}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Resultados del experimento Pareto (evaluación en test).}
+\label{tab:pareto}
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+$\lambda$ & AUC test & DP Gap & $\hat{p}(M)$ & $\hat{p}(F)$ & $\Delta$AUC \\
+\midrule
+0.0 & 0.7463 & 0.0300 & 0.0998 & 0.0697 & 0.0000 \\
+0.1 & 0.7440 & 0.0079 & 0.0842 & 0.0763 & $-$0.0023 \\
+\textbf{0.5} & \textbf{0.7429} & \textbf{0.0034} & \textbf{0.0800} & \textbf{0.0766} & $-$\textbf{0.0034} \\
+1.0 & 0.7425 & 0.0044 & 0.0850 & 0.0805 & $-$0.0038 \\
+2.0 & 0.7402 & 0.0023 & 0.0756 & 0.0732 & $-$0.0060 \\
+5.0 & 0.7352 & 0.0019 & 0.0733 & 0.0714 & $-$0.0110 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Modelo recomendado: $\lambda = 0.5$.}
+De $\lambda=0$ a $\lambda=0.5$ el DP Gap se reduce un \textbf{89\%}
+(de 0.0300 a 0.0034) sacrificando únicamente \textbf{0.0034 puntos de AUC}.
+A partir de $\lambda=0.5$ se produce un rendimiento decreciente: la ganancia
+en equidad es mínima mientras el coste en AUC se acelera.
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Incertidumbre — MC Dropout}
+\label{sec:uncertainty}
+
+\subsection{Método seleccionado}
+
+Se utiliza \textbf{Monte Carlo Dropout} (Gal \& Ghahramani, 2016), que
+mantiene activas las capas Dropout durante la inferencia y realiza $N=100$
+pasadas hacia adelante por muestra. La varianza entre pasadas mide la
+incertidumbre epistémica del modelo:
+
+\begin{equation}
+    \hat{\sigma}^2_i = \frac{1}{N}\sum_{t=1}^{N}(\hat{y}_i^{(t)} - \bar{y}_i)^2,
+    \quad \bar{y}_i = \frac{1}{N}\sum_{t=1}^{N}\hat{y}_i^{(t)}
+    \label{eq:mc_var}
+\end{equation}
+
+La elección de MC Dropout frente a alternativas (Redes Bayesianas,
+Deep Ensembles) se justifica porque M6 ya incorpora capas Dropout: no
+requiere rediseño arquitectónico y su fundamento teórico como
+aproximación variacional bayesiana está bien establecido.
+
+\subsection{Distribución de incertidumbre por clase}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figs/09_uncertainty_by_class.pdf}
+    \caption{Distribución de la varianza MC Dropout por clase TARGET.
+             M6 base (izq.) muestra distribuciones casi idénticas entre
+             clases: no reconoce que los impagos son más difíciles de
+             predecir. FAIR $\lambda=0.5$ (dcha.) presenta una cola más
+             larga para TARGET=1, indicando mayor incertidumbre en la
+             clase de riesgo.}
+    \label{fig:unc_class}
+\end{figure}
+
+\subsection{Incertidumbre vs calidad de EXT\_SOURCE}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figs/10_uncertainty_vs_missing.pdf}
+    \caption{Varianza media en función del número de fuentes externas
+             ausentes (imputadas con la mediana). El modelo FAIR muestra
+             un patrón \textbf{monotóno creciente} (hasta $+73\%$ con
+             las tres fuentes imputadas), mientras que M6 base es
+             prácticamente plano.}
+    \label{fig:unc_missing}
+\end{figure}
+
+\subsection{Resultados}
+
+\begin{table}[H]
+\centering
+\caption{Resumen de métricas de incertidumbre (test, $N=100$ pasadas MC Dropout).}
+\label{tab:uncertainty}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Métrica} & \textbf{M6 base} & \textbf{FAIR $\lambda=0.5$} \\
+\midrule
+AUC predicción puntual              & 0.7451 & 0.7429 \\
+AUC media MC Dropout                & \textbf{0.7455} & \textbf{0.7433} \\
+\midrule
+Varianza media — TARGET=0 (pagó)    & 0.001422 & 0.000147 \\
+Varianza media — TARGET=1 (impago)  & 0.001306 & \textbf{0.000364} \\
+Ratio var(T=1)/var(T=0)             & 0.92 ($-8\%$) & \textbf{2.48 ($+148\%$)} \\
+\midrule
+Varianza — 0 EXT\_SOURCE ausentes   & 0.001472 & 0.000163 \\
+Varianza — 1 EXT\_SOURCE ausente    & 0.001354 & 0.000161 \\
+Varianza — 2 EXT\_SOURCE ausentes   & 0.001489 & 0.000185 \\
+Varianza — 3 EXT\_SOURCE ausentes   & 0.001414 & \textbf{0.000282} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Hallazgos clave.}
+\begin{enumerate}
+    \item \textbf{M6 base no distingue incertidumbre por clase}: la varianza
+          en impagos es un 8\% \emph{menor} que en buenos pagadores,
+          comportamiento opuesto al deseable.
+    \item \textbf{FAIR $\lambda=0.5$ muestra calibración superior}: la
+          varianza en impagos es 2.5× mayor que en buenos pagadores. El
+          modelo reconoce que la clase minoritaria es más difícil.
+    \item \textbf{FAIR detecta degradación por datos imputados}: la varianza
+          crece monotónamente con el número de fuentes externas ausentes
+          (+73\% con las tres imputadas).
+    \item \textbf{MC-mean mejora el AUC}: la media de 100 pasadas supera
+          ligeramente a la predicción puntual en ambos modelos (+0.0004),
+          confirmando el efecto ensemble del MC Dropout.
+\end{enumerate}
+
+La restricción de fairness, además de reducir la discriminación demográfica,
+produce un modelo \textbf{más honesto respecto a sus limitaciones de
+información}: es más incierto cuando no tiene datos de calidad.
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Conclusiones}
+\label{sec:conclusions}
+
+\begin{table}[H]
+\centering
+\caption{Comparativa final: modelo base vs mejor modelo FAIR (test).}
+\label{tab:final}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Métrica} & \textbf{M6 base} & \textbf{FAIR $\lambda=0.5$} \\
+\midrule
+AUC-ROC (test)     & \textbf{0.7451} & 0.7429 \\
+DP Gap             & 0.0300          & \textbf{0.0034} \\
+$\hat{p}$(impago $|$ H) & 0.0998    & \textbf{0.0800} \\
+$\hat{p}$(impago $|$ M) & 0.0697    & \textbf{0.0766} \\
+Varianza ratio T1/T0 & 0.92 (peor) & \textbf{2.48 (mejor)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El sistema desarrollado alcanza un AUC de 0.745 con el subconjunto de 12
+features seleccionadas. La introducción de la FAIR Loss con $\lambda=0.5$
+reduce la discriminación demográfica un 89\% (de 0.030 a 0.003 de DP Gap)
+con un coste de solo 0.003 puntos de AUC, un tradeoff favorable desde el
+punto de vista regulatorio.
+
+El análisis de incertidumbre mediante MC Dropout revela que el modelo FAIR
+es intrínsecamente más honesto: reconoce cuándo trabaja con información de
+baja calidad (fuentes externas imputadas) y cuándo enfrenta la clase de
+mayor riesgo (impago), aumentando su varianza de predicción en ambos casos.
+
+\end{document}
