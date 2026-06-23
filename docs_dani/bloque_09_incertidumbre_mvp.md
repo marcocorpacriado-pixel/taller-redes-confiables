@@ -24,15 +24,15 @@ No es una garantia formal de cobertura. Es un proxy aprendido de error esperado.
 El codigo principal vive en:
 
 ```text
-src/uncertainty.py
+src/dani_credit/uncertainty.py
 ```
 
 Tambien se han actualizado:
 
 ```text
-src/__init__.py
-tests/test_uncertainty.py
-docs/bloque_09_incertidumbre_mvp.md
+src/dani_credit/__init__.py
+tests/test_dani_uncertainty_regressions.py
+docs_dani/bloque_09_incertidumbre_mvp.md
 ```
 
 El modulo se ha disenado con POO para que el Bloque 10 pueda reutilizar piezas, especialmente el builder de M2, la construccion de `[X, y_proba]`, la escritura de artefactos y la prediccion dual-input de M1.
@@ -46,7 +46,9 @@ M1 = mejor modelo FAIR seleccionado por Bloque 7
 M2 = red pequena entrenada con errores de validation
 target de M2 = abs(y_val_proba - y_val)
 loss de M2 = MAE
-salida de M2 = ReLU
+salida de M2 = softplus
+clipping final = [0, 1]
+normalizacion interna de Z dentro de M2
 ```
 
 No se usa MSE como loss principal.
@@ -61,7 +63,7 @@ MAE es mas robusta que MSE ante unos pocos errores grandes
 La salida de M2 usa:
 
 ```python
-tf.keras.layers.Dense(1, activation="relu")
+tf.keras.layers.Dense(1, activation="softplus")
 ```
 
 No `sigmoid`.
@@ -70,9 +72,12 @@ Motivo:
 
 ```text
 el error absoluto no puede ser negativo
-ReLU permite predecir naturalmente valores cercanos a 0
+softplus evita el colapso duro a cero que puede producir una salida ReLU
 sigmoid comprime todo a (0, 1) y puede dificultar aprender errores muy pequenos
 ```
+
+Despues de predecir, la incertidumbre se recorta con `np.clip(uncertainty, 0,
+1)`, porque M2 estima el error absoluto de una probabilidad.
 
 ## Flujo implementado
 
@@ -84,13 +89,15 @@ El flujo real es:
 3. Calcular error_val = abs(y_val_proba - y_val).
 4. Construir Z_val = [X_val, y_val_proba].
 5. Dividir Z_val/error_val en train/validation internos para M2.
-6. Entrenar M2 con MAE y EarlyStopping.
-7. Predecir y_test_proba con M1 en test.
-8. Construir Z_test = [X_test, y_test_proba].
-9. Predecir uncertainty_test con M2.
-10. Aplicar el threshold seleccionado en validation para crear y_pred_label.
-11. Extraer EXT_NULL_COUNT.
-12. Guardar uncertainty_test.csv, summary, history y opcionalmente M2.
+6. Adaptar la normalizacion interna de M2 con el train interno de M2.
+7. Entrenar M2 con MAE y EarlyStopping.
+8. Predecir y_test_proba con M1 en test.
+9. Construir Z_test = [X_test, y_test_proba].
+10. Predecir uncertainty_test con M2.
+11. Recortar uncertainty a [0, 1] y validar que no sea constante.
+12. Aplicar el threshold seleccionado en validation para crear y_pred_label.
+13. Recuperar EXT_NULL_COUNT crudo desde ProcessedSplitDataset.
+14. Guardar uncertainty_test.csv, summary, history y opcionalmente M2.
 ```
 
 ## Por que M2 no aprende de errores in-sample
@@ -136,7 +143,8 @@ UncertaintyModelConfig(
     hidden_units=(32,),
     activation="relu",
     dropout=0.3,
-    output_activation="relu",
+    output_activation="softplus",
+    normalize_inputs=True,
     learning_rate=1e-3,
     gradient_clipnorm=1.0,
     loss="mae",
@@ -154,7 +162,8 @@ Puntos importantes:
 hidden_units pequeno -> evita sobreajuste de M2
 dropout=0.3 -> regulariza el regresor
 loss="mae" -> robusta para errores absolutos
-output_activation="relu" -> incertidumbre no negativa
+output_activation="softplus" -> incertidumbre no negativa sin colapso ReLU
+normalize_inputs=True -> estabiliza M2 ante importes financieros sin escalar
 internal_validation_size=0.2 -> split explicito para M2
 ```
 
@@ -199,7 +208,7 @@ La clase `DualInputModelPredictor` encapsula este formato y devuelve un vector p
 
 ## `UncertaintyFeatureBuilder`
 
-Esta clase hace dos cosas:
+Esta clase construye la entrada aumentada de M2:
 
 ### Construir `Z`
 
@@ -215,16 +224,10 @@ Z = [X || y_proba]
 
 M2 aprende no solo a partir de las features originales, sino tambien a partir de la probabilidad que emitio M1.
 
-### Extraer `EXT_NULL_COUNT`
-
-```python
-ext_null = UncertaintyFeatureBuilder().extract_ext_null_count(
-    X_test,
-    feature_names,
-)
-```
-
-Esta columna permite analizar si el modelo duda mas cuando faltan puntuaciones externas.
+`EXT_NULL_COUNT` ya no se extrae desde `X_test` procesado para el CSV final,
+porque esa matriz puede contener una version escalada. El valor usado para
+reporting sale de `ProcessedSplitDataset.ext_null_count_test`, conservado en
+crudo por el Bloque 2.
 
 ## `UncertaintyTrainingDataBuilder`
 
@@ -274,9 +277,10 @@ Construye el modelo M2:
 
 ```text
 Input(Z_dim)
+Normalization(adaptado con Z_train interno)
 Dense(32, relu)
 Dropout(0.3)
-Dense(1, relu)
+Dense(1, softplus)
 ```
 
 Compilacion:
@@ -299,9 +303,9 @@ Construye las predicciones finales de test:
 ```text
 y_test_proba = M1(X_test, s_test)
 Z_test = [X_test, y_test_proba]
-uncertainty = M2(Z_test)
+uncertainty = clip(M2(Z_test), 0, 1)
 y_pred_label = apply_threshold(y_test_proba, selected_threshold)
-EXT_NULL_COUNT = columna procesada del Bloque 2
+EXT_NULL_COUNT = ext_null_count_test crudo de ProcessedSplitDataset
 ```
 
 La salida principal es un DataFrame con columnas:
@@ -318,6 +322,13 @@ EXT_NULL_COUNT
 ```
 
 Esta incertidumbre corresponde al M1 FAIR seleccionado. No debe asumirse que aplica al modelo base salvo que se entrene otro M2 especifico para el base.
+
+Antes de guardar artefactos se validan dos invariantes:
+
+```text
+uncertainty debe ser finita, estar en [0, 1] y no ser constante
+EXT_NULL_COUNT debe contener solo valores crudos 0, 1, 2 o 3
+```
 
 ## `UncertaintySummaryBuilder`
 
@@ -476,38 +487,46 @@ En una ejecucion real, `selected_threshold` se lee de la fila seleccionada en `p
 El archivo nuevo es:
 
 ```text
-tests/test_uncertainty.py
+tests/test_dani_uncertainty_regressions.py
 ```
 
 Cubre:
 
 ```text
-1. UncertaintyFeatureBuilder crea Z=[X, proba] y extrae EXT_NULL_COUNT.
-2. UncertaintyM2ModelBuilder usa MAE y salida ReLU.
-3. UncertaintyTrainingDataBuilder usa validation, no train.
-4. UncertaintyMVPTrainer genera CSVs esperados con un M1 dual-input pequeno.
+1. UncertaintyM2ModelBuilder usa salida softplus y produce incertidumbre no constante en un caso sintetico.
+2. UncertaintyPredictionBuilder rechaza incertidumbre constante.
+3. ProcessedSplitDataset conserva EXT_NULL_COUNT crudo en train, validation y test.
+4. UncertaintyPredictionBuilder rechaza valores escalados de EXT_NULL_COUNT, como -1.0.
 ```
 
 Los tests usan un M1 sintetico dual-input para verificar el flujo sin entrenar un Keras Tuner real.
 
-## Verificacion ejecutada
+## Verificacion requerida
 
-Tras implementar el bloque:
+Tras corregir el bloque deben pasar al menos:
 
 ```text
-py_compile sobre src/ y tests/ -> OK
-pytest -q -> 37 tests passed
+python -m py_compile sobre src/dani_credit/ y tests/
+python -m pytest tests/test_dani_uncertainty_regressions.py
 ```
 
-Los warnings habituales de TensorFlow no indican fallo del proyecto.
+Ademas, el notebook debe verificar antes de graficar:
+
+```text
+unc["uncertainty"].nunique() > 1
+set(unc["EXT_NULL_COUNT"].unique()) <= {0, 1, 2, 3}
+```
 
 ## Que obtenemos al finalizar
 
 Al cerrar este bloque tenemos:
 
 ```text
-src/uncertainty.py
-M2 MVP con MAE y salida ReLU
+src/dani_credit/uncertainty.py
+M2 MVP con MAE y salida softplus
+normalizacion interna de features en M2
+clipping de incertidumbre a [0, 1]
+validacion anti-colapso de incertidumbre constante
 split interno reproducible para M2
 predicciones de incertidumbre en test
 uncertainty_test.csv
@@ -528,6 +547,9 @@ Mitigacion:
 M2 pequeno
 MAE
 Dropout
+salida softplus
+normalizacion interna de Z
+validacion anti-colapso antes de guardar
 summary por target
 histograma en Bloque 12
 ```
@@ -554,7 +576,8 @@ no venderlo como intervalo con cobertura garantizada
 Mitigacion:
 
 ```text
-UncertaintyFeatureBuilder falla si EXT_NULL_COUNT no esta en feature_names
+ProcessedSplitDataset conserva ext_null_count_train/val/test en crudo
+UncertaintyPredictionBuilder rechaza valores fuera de {0, 1, 2, 3}
 ```
 
 ## Criterio de terminado
@@ -564,12 +587,14 @@ El Bloque 9 se considera terminado porque:
 ```text
 M1 FAIR puede predecir validation y test
 M2 entrena con MAE
-M2 usa salida ReLU
+M2 usa salida softplus
+M2 normaliza internamente Z
 M2 usa split interno reproducible
 uncertainty_test.csv se genera
+uncertainty_test.csv no contiene incertidumbre constante
 uncertainty_summary_by_target.csv se genera
 history_uncertainty_m2.csv se genera
 uncertainty_m2.keras se guarda si save_model=True
-EXT_NULL_COUNT esta en el CSV final
+EXT_NULL_COUNT esta en el CSV final con valores crudos 0, 1, 2 o 3
 los tests pasan
 ```

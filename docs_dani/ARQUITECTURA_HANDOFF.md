@@ -138,7 +138,7 @@ flowchart TD
 
 ---
 
-### 3.2 `src/preprocessing.py` — Bloque 2
+### 3.2 `src/dani_credit/preprocessing.py` — Bloque 2
 
 **Propósito:** Transformar el CSV crudo en arrays numéricos sin leakage. El módulo está dividido en dos capas: transformaciones deterministas (sin ajuste estadístico) y preprocessing estadístico (ajustado solo en train).
 
@@ -156,7 +156,9 @@ flowchart TD
 
 - **`DeterministicDataset`** — DataFrame de features + Series de target + Series de sensitive, alineados por índice `SK_ID_CURR`.
 - **`RawSplitDataset`** — El dataset anterior separado en tres splits, antes del preprocessing estadístico.
-- **`ProcessedSplitDataset`** — Arrays numpy `X_train/val/test`, `y_train/val/test`, `s_train/val/test`, lista de `feature_names` y el `preprocessor` ya fiteado.
+- **`ProcessedSplitDataset`** — Arrays numpy `X_train/val/test`, `y_train/val/test`, `s_train/val/test`, IDs por split, `ext_null_count_train/val/test` en crudo, lista de `feature_names` y el `preprocessor` ya fiteado.
+
+> **Invariante de auditoría:** `EXT_NULL_COUNT` se conserva como metadato crudo con valores `0`, `1`, `2` o `3`. La matriz procesada puede contener una versión escalada para modelado, pero las figuras de incertidumbre deben usar `ext_null_count_test`.
 
 > **Invariante crítico:** Las columnas financieras (`AMT_INCOME_TOTAL`, `AMT_CREDIT`, `AMT_ANNUITY`, `AMT_GOODS_PRICE`) pasan por el pipeline con **solo imputación de mediana**, sin `RobustScaler`. Esto es intencional: `FinancialRatiosLayer` necesita las magnitudes originales para calcular ratios interpretables.
 
@@ -336,7 +338,7 @@ flowchart TD
 
 ---
 
-### 3.10 `src/uncertainty.py` — Bloque 9
+### 3.10 `src/dani_credit/uncertainty.py` — Bloque 9
 
 **Propósito:** Estimar cuánto espera equivocarse el modelo principal (M1) mediante un segundo modelo (M2) entrenado para predecir el error absoluto de M1 sobre el conjunto de validación.
 
@@ -344,11 +346,11 @@ flowchart TD
 
 | Clase | Responsabilidad |
 |---|---|
-| **`UncertaintyM2ModelBuilder`** | Construye M2: red secuencial de 32 neuronas con activación `relu` en la salida (error absoluto ≥ 0, nunca negativo). Compila con `loss="mae"` y Adam. |
+| **`UncertaintyM2ModelBuilder`** | Construye M2: normalización interna de `Z`, red pequeña con activación oculta `relu` y salida `softplus`. Compila con `loss="mae"` y Adam. |
 | **`UncertaintyFeatureBuilder`** | Construye la matriz `Z = [X_processed | y_proba]`: concatena las features procesadas con la predicción de M1 como último feature. M2 aprende a predecir el error a partir del contexto completo + la propia predicción de M1. |
 | **`UncertaintyInternalSplitter`** | Divide `Z_val` en train y val internos para EarlyStopping de M2. Usa `sklearn.model_selection.train_test_split` con `random_state=42` (no `validation_split` de Keras) para control explícito del seed y tamaño. |
 | **`UncertaintyMVPTrainer`** | Orquesta el flujo completo: M1 predice en val → calcula errores absolutos → construye Z_val → divide internamente → entrena M2 → M1 predice en test → M2 predice incertidumbre en test. |
-| **`UncertaintyPredictionBuilder`** | Construye el DataFrame final con columnas `SK_ID_CURR`, `y_true`, `y_proba`, `y_pred_label`, `sensitive`, `uncertainty`, `EXT_NULL_COUNT`. |
+| **`UncertaintyPredictionBuilder`** | Construye el DataFrame final con columnas `SK_ID_CURR`, `y_true`, `y_proba`, `y_pred_label`, `sensitive`, `uncertainty`, `EXT_NULL_COUNT`. Recorta incertidumbre a `[0, 1]`, rechaza incertidumbre constante y usa `EXT_NULL_COUNT` crudo. |
 | **`UncertaintySummaryBuilder`** | Genera `uncertainty_summary_by_target.csv`: mediana e IQR de incertidumbre agrupados por `TARGET` real. |
 | **`UncertaintyArtifactWriter`** | Guarda todos los artefactos en `results/tables/` y el modelo M2 en `results/models/uncertainty_m2.keras`. Rutas absolutas. |
 | **`DualInputModelPredictor`** | Genera predicciones de M1 (FAIR, dual-input) con el formato correcto `{"features": X, "sensitive": s.reshape(-1,1)}`. |
@@ -356,12 +358,12 @@ flowchart TD
 
 #### Config y artefactos
 
-- **`UncertaintyModelConfig`** — `hidden_units=(32,)`, `activation="relu"`, `output_activation="relu"`, `loss="mae"`, `epochs=100`, `internal_validation_size=0.2`, `random_state=42`.
+- **`UncertaintyModelConfig`** — `hidden_units=(32,)`, `activation="relu"`, `output_activation="softplus"`, `normalize_inputs=True`, `loss="mae"`, `epochs=100`, `internal_validation_size=0.2`, `random_state=42`.
 - **`UncertaintyArtifactPaths`** — `results/tables/uncertainty_test.csv`, `results/tables/uncertainty_summary_by_target.csv`, `results/models/uncertainty_m2.keras`.
 
 ---
 
-### 3.11 `src/__init__.py` — Paquete público
+### 3.11 `src/dani_credit/__init__.py` — Paquete público
 
 **Propósito:** Exponer la API pública del paquete `src`. Las importaciones de los Bloques 1–3 (sin TensorFlow) siempre disponibles. Las importaciones de Bloques 4–9 (con TensorFlow) dentro de un bloque `try/except ModuleNotFoundError` para que el paquete pueda instalarse en entornos sin GPU/TF.
 
@@ -413,7 +415,7 @@ flowchart TD
 | `bloque_06_fair_loss_profesional.md` | `src/models.py` (`FairnessPenalty`, `FairCustomModelBuilder`, `FairModelConfig`) | ✅ Implementado |
 | `bloque_07_keras_tuner_y_barrido_lambda.md` | `src/tuning.py` | ✅ Implementado |
 | `bloque_08_threshold_decision.md` | `src/metrics.py` | ✅ Implementado y testado |
-| `bloque_09_incertidumbre_mvp.md` | `src/uncertainty.py` | ✅ Implementado |
+| `bloque_09_incertidumbre_mvp.md` | `src/dani_credit/uncertainty.py` | ✅ Implementado |
 | `bloque_10_incertidumbre_oof_extra.md` | *(sin módulo propio aún)* | 📋 Planificado |
 | `bloque_11_evaluacion_final.md` | Usa `src/metrics.py` + predict de `src/models.py` | 🔲 Pendiente de notebook |
 | `bloque_12_figuras_obligatorias.md` | Usa artefactos CSV de todos los bloques | 🔲 Pendiente de notebook |
@@ -431,7 +433,7 @@ flowchart TD
 | **Split estratificado TARGET×SENSITIVE** | `StratificationKeyBuilder` + `HomeCreditTrainValTestSplitter` con `stratify=strata_key` |
 | **Threshold en validation, no en test** | `ThresholdSelector` en `metrics.py` + política documentada en `TuningArtifactPaths` |
 | **M1→M2 para incertidumbre** | `UncertaintyMVPTrainer`: M1 predice en val, M2 aprende `|y_proba - y_true|`, M2 predice en test |
-| **EXT_NULL_COUNT como proxy de incertidumbre** | Flag creado en `HomeCreditDeterministicTransformer` e incluido en `uncertainty_test.csv` |
+| **EXT_NULL_COUNT como proxy de incertidumbre** | Flag creado en `HomeCreditDeterministicTransformer`, preservado crudo en `ProcessedSplitDataset` e incluido en `uncertainty_test.csv` |
 | **lambda_fair=0 como base controlada** | `FairModelConfig(lambda_fair=0.0)` produce arquitectura idéntica al FAIR sin penalización activa |
 
 ---
@@ -449,7 +451,7 @@ Los CSV de Kaggle deben descargarse en `data/raw/` antes de ejecutar el pipeline
 
 ### 6.2 Bloque 10 — Incertidumbre OOF (mejora metodológica)
 
-El módulo `src/uncertainty.py` cubre el MVP (Bloque 9). El Bloque 10 requiere un módulo adicional (o extensión de `uncertainty.py`) con:
+El módulo `src/dani_credit/uncertainty.py` cubre el MVP (Bloque 9). El Bloque 10 requiere un módulo adicional (o extensión de `uncertainty.py`) con:
 
 - `StratifiedKFold(n_splits=5, shuffle=True, random_state=42)` estratificado por `TARGET×SENSITIVE`.
 - Loop de entrenamiento OOF que use `build_fair_custom_model()` con los mejores hiperparámetros.
@@ -465,11 +467,12 @@ Estos bloques no requieren nuevos módulos en `src/`; consumen lo ya implementad
 
 ### 6.4 Tests pendientes
 
-Los módulos `src/tuning.py` y `src/uncertainty.py` disponen de archivos de tests (`tests/test_tuning.py`, `tests/test_uncertainty.py`, `tests/test_metrics.py`, `tests/test_fair_model.py`) pero conviene verificar que cubren los invariantes críticos equivalentes a los de los módulos ya testados:
+Los módulos `src/dani_credit/tuning.py` y `src/dani_credit/uncertainty.py` deben mantenerse cubiertos por tests de regresión específicos. En particular, `tests/test_dani_uncertainty_regressions.py` cubre los invariantes críticos de la corrección de incertidumbre:
 
-- Test de que `FairnessPenalty` no modifica el output (es identidad).
-- Test de que el threshold siempre se elige en validation y no se filtra al test.
-- Test de que M2 no recibe datos de test durante su entrenamiento.
+- M2 con salida `softplus` produce incertidumbre no constante en un caso sintético razonable.
+- Una incertidumbre constante se rechaza antes de guardar artefactos.
+- `EXT_NULL_COUNT` se conserva crudo en `ProcessedSplitDataset`.
+- Valores escalados de `EXT_NULL_COUNT`, como `-1.0`, se rechazan para reporting.
 
 ### 6.5 Correcciones menores en los docs de diseño
 

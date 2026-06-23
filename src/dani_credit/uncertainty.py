@@ -53,8 +53,10 @@ class UncertaintyModelConfig:
         hidden_units: Dense layer widths for M2.
         activation: Activation used in hidden Dense layers.
         dropout: Dropout rate after hidden layers.
-        output_activation: Output activation. MVP uses ReLU because absolute
-            error cannot be negative.
+        output_activation: Output activation. `softplus` keeps the prediction
+            non-negative without the hard zero-collapse risk of ReLU.
+        normalize_inputs: Whether to add a train-adapted Keras normalization
+            layer at the front of M2.
         learning_rate: Adam learning rate.
         gradient_clipnorm: Adam clipnorm.
         loss: Regression loss. MVP uses MAE.
@@ -78,14 +80,20 @@ class UncertaintyModelConfig:
     # validation-error target.
     hidden_units: tuple[int, ...] = (32,)
 
-    # ReLU is enough for a simple tabular error regressor.
+    # ReLU remains acceptable in hidden layers, where a zero activation does not
+    # directly force the final uncertainty estimate to be zero.
     activation: str = "relu"
 
     # Dropout makes the tiny M2 less likely to memorize validation rows.
     dropout: float = 0.3
 
-    # Error is non-negative. ReLU avoids sigmoid compression near zero.
-    output_activation: str = "relu"
+    # Error is non-negative. Softplus avoids the hard zero output that made the
+    # previous ReLU head collapse to constant uncertainty.
+    output_activation: str = "softplus"
+
+    # M2 receives processed features plus unscaled financial amounts; this
+    # in-model normalization keeps magnitudes comparable and is saved with M2.
+    normalize_inputs: bool = True
 
     # Conservative defaults aligned with earlier Keras models.
     learning_rate: float = 1e-3
@@ -633,17 +641,29 @@ class UncertaintyM2ModelBuilder:
         if self._config.gradient_clipnorm <= 0:
             raise UncertaintyError("gradient_clipnorm must be positive.")
 
-    def build(self, input_dim: int) -> tf.keras.Model:
+        allowed_output_activations = {"softplus", "linear"}
+        if self._config.output_activation not in allowed_output_activations:
+            raise UncertaintyError(
+                "output_activation must be 'softplus' or 'linear' for M2."
+            )
+
+    def build(
+        self,
+        input_dim: int,
+        normalization_data: np.ndarray | None = None,
+    ) -> tf.keras.Model:
         """Build and compile M2.
 
         Args:
             input_dim: Number of augmented M2 input columns.
+            normalization_data: M2 training rows used to adapt the optional
+                in-model normalization layer.
 
         Returns:
             Compiled Keras regression model.
 
         Raises:
-            UncertaintyError: If input_dim is invalid.
+            UncertaintyError: If input_dim or normalization data is invalid.
         """
 
         if input_dim <= 0:
@@ -651,6 +671,31 @@ class UncertaintyM2ModelBuilder:
 
         inputs = tf.keras.Input(shape=(input_dim,), name="uncertainty_features")
         x = inputs
+
+        if self._config.normalize_inputs:
+            if normalization_data is None:
+                raise UncertaintyError(
+                    "normalization_data is required when normalize_inputs=True."
+                )
+
+            normalizer_data = np.asarray(normalization_data, dtype="float32")
+
+            if normalizer_data.ndim != 2 or normalizer_data.shape[1] != input_dim:
+                raise UncertaintyError(
+                    "normalization_data must be a 2D matrix aligned with input_dim."
+                )
+
+            if not np.isfinite(normalizer_data).all():
+                raise UncertaintyError("normalization_data contains non-finite values.")
+
+            # Financial inputs can be orders of magnitude larger than the
+            # probability column. Keeping normalization inside M2 makes the
+            # saved model self-contained for later prediction.
+            normalizer = tf.keras.layers.Normalization(
+                name="m2_feature_normalization"
+            )
+            normalizer.adapt(normalizer_data)
+            x = normalizer(inputs)
 
         for layer_index, units in enumerate(self._config.hidden_units):
             x = tf.keras.layers.Dense(
@@ -852,19 +897,20 @@ class UncertaintyPredictionBuilder:
 
         y_test_proba = self._predictor.predict(m1_model, data.X_test, data.s_test)
         Z_test = self._feature_builder.build_augmented(data.X_test, y_test_proba)
-        uncertainty = m2_model.predict(
+        raw_uncertainty = m2_model.predict(
             Z_test,
             batch_size=batch_size,
             verbose=0,
         ).reshape(-1)
 
-        if uncertainty.shape[0] != data.y_test.shape[0]:
+        if raw_uncertainty.shape[0] != data.y_test.shape[0]:
             raise UncertaintyError("Uncertainty length does not match y_test.")
 
+        uncertainty = self._clip_and_validate_uncertainty(raw_uncertainty)
         labels = apply_threshold(y_test_proba, threshold)
-        ext_null_count = self._feature_builder.extract_ext_null_count(
-            data.X_test,
-            data.feature_names,
+        ext_null_count = self._validate_ext_null_count(
+            data.ext_null_count_test,
+            expected_rows=data.y_test.shape[0],
         )
 
         predictions = pd.DataFrame(
@@ -875,8 +921,8 @@ class UncertaintyPredictionBuilder:
                 "y_pred_label": labels.astype(int),
                 "sensitive": data.s_test.astype(int),
                 "threshold": float(threshold),
-                "uncertainty": np.maximum(uncertainty, 0.0).astype(float),
-                "EXT_NULL_COUNT": ext_null_count.astype(float),
+                "uncertainty": uncertainty.astype(float),
+                "EXT_NULL_COUNT": ext_null_count.astype(int),
             }
         )
 
@@ -886,8 +932,78 @@ class UncertaintyPredictionBuilder:
             predictions=predictions,
             summary=summary,
             y_test_proba=y_test_proba,
-            uncertainty=np.maximum(uncertainty, 0.0).astype(float),
+            uncertainty=uncertainty.astype(float),
         )
+
+    def _clip_and_validate_uncertainty(self, uncertainty: np.ndarray) -> np.ndarray:
+        """Clip M2 predictions to probability-error range and validate them.
+
+        Args:
+            uncertainty: Raw M2 predictions for the test split.
+
+        Returns:
+            One-dimensional float array clipped to `[0, 1]`.
+
+        Raises:
+            UncertaintyError: If predictions are non-finite or collapse to a
+                constant value on a multi-row test split.
+        """
+
+        values = np.asarray(uncertainty, dtype="float64").reshape(-1)
+
+        if not np.isfinite(values).all():
+            raise UncertaintyError("M2 uncertainty predictions contain non-finite values.")
+
+        clipped = np.clip(values, 0.0, 1.0)
+
+        # A constant uncertainty vector is not defensible for the required
+        # distribution plots and usually signals an M2 output-head failure.
+        if clipped.shape[0] > 1 and np.unique(np.round(clipped, decimals=8)).size <= 1:
+            raise UncertaintyError(
+                "M2 produced constant uncertainty; refusing to save invalid artifacts."
+            )
+
+        return clipped
+
+    def _validate_ext_null_count(
+        self,
+        ext_null_count: np.ndarray,
+        *,
+        expected_rows: int,
+    ) -> np.ndarray:
+        """Validate raw EXT_NULL_COUNT values before writing uncertainty CSV.
+
+        Args:
+            ext_null_count: Raw external-score missing counts from
+                `ProcessedSplitDataset`.
+            expected_rows: Number of rows expected in the test split.
+
+        Returns:
+            One-dimensional integer array with values in `{0, 1, 2, 3}`.
+
+        Raises:
+            UncertaintyError: If values are misaligned, missing or scaled.
+        """
+
+        values = np.asarray(ext_null_count).reshape(-1)
+
+        if values.shape[0] != expected_rows:
+            raise UncertaintyError("EXT_NULL_COUNT length does not match y_test.")
+
+        if pd.isna(values).any():
+            raise UncertaintyError("EXT_NULL_COUNT contains missing values.")
+
+        try:
+            numeric_values = values.astype("float64", copy=False)
+        except ValueError as exc:
+            raise UncertaintyError("EXT_NULL_COUNT must be numeric.") from exc
+
+        if not np.all(np.isin(numeric_values, [0.0, 1.0, 2.0, 3.0])):
+            raise UncertaintyError(
+                "EXT_NULL_COUNT must contain raw integer values 0, 1, 2 or 3."
+            )
+
+        return numeric_values.astype("int8", copy=False)
 
 
 class UncertaintyArtifactWriter:
@@ -1155,7 +1271,10 @@ class UncertaintyMVPTrainer:
             training_data.error,
         )
 
-        m2_model = self._model_builder.build(input_dim=Z_train.shape[1])
+        m2_model = self._model_builder.build(
+            input_dim=Z_train.shape[1],
+            normalization_data=Z_train,
+        )
 
         history = m2_model.fit(
             Z_train,

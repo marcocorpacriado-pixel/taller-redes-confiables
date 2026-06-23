@@ -2,6 +2,7 @@
 .venv/
 venv/
 env/
+.vscode/
 
 # Archivos de caché de Python
 __pycache__/
@@ -14,4 +15,16 @@ __pycache__/
 
 # Archivos de sistema operativo
 .DS_Store
-Thumbs.db"application_train.csv" 
+Thumbs.db
+
+# Datos locales de Kaggle
+application_train.csv
+application_test.csv
+data/
+raw_data/
+
+# Artefactos generados localmente
+results/
+results_dani/
+kt_dir/
+*.keras

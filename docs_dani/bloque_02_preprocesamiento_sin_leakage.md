@@ -249,6 +249,12 @@ La regla es:
 crear flags antes de imputar
 ```
 
+Además, `EXT_NULL_COUNT` se conserva también como metadato crudo en
+`ProcessedSplitDataset`. La matriz procesada puede contener una versión
+escalada para entrenamiento, pero las auditorías y las figuras de
+incertidumbre deben usar siempre el valor semántico original: `0`, `1`, `2` o
+`3`.
+
 ### `DAYS_EMPLOYED`
 
 Valor anomalo:
@@ -480,11 +486,19 @@ s_test
 train_ids
 val_ids
 test_ids
+ext_null_count_train
+ext_null_count_val
+ext_null_count_test
 feature_names
 preprocessor
 ```
 
 Las matrices `X_*` son `np.ndarray` en `float32`.
+
+Los campos `ext_null_count_*` son arrays enteros con valores en `{0, 1, 2, 3}`.
+Se guardan antes de aplicar el `RobustScaler`, porque `EXT_NULL_COUNT` se usa
+en el Bloque 9 como variable explicativa de calidad de datos, no como valor
+numérico escalado.
 
 `feature_names` conserva el orden exacto tras el `ColumnTransformer`.
 
