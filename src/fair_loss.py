@@ -23,7 +23,7 @@ Alternativas descartadas:
 """
 
 import keras
-import keras.backend as K
+import keras.ops as ops
 
 
 class FairBCELoss(keras.losses.Loss):
@@ -45,6 +45,8 @@ class FairBCELoss(keras.losses.Loss):
 
     y_pred: tensor de forma (batch, 1)
       · probabilidad predicha de impago
+
+    Nota: usa keras.ops para compatibilidad con Keras 3.x
     """
 
     def __init__(self, lambda_fair: float = 1.0, **kwargs):
@@ -56,20 +58,20 @@ class FairBCELoss(keras.losses.Loss):
         gender = y_combined[:, 1:2]
 
         # ── 1. Binary Cross-Entropy ───────────────────────────────────────
-        bce = K.mean(keras.losses.binary_crossentropy(y_true, y_pred))
+        bce = ops.mean(keras.losses.binary_crossentropy(y_true, y_pred))
 
         # ── 2. Demographic Parity gap ─────────────────────────────────────
-        eps   = K.epsilon()
-        y_flat = K.flatten(y_pred)
-        g_flat = K.flatten(gender)      # 1=Mujer, 0=Hombre
+        eps    = keras.backend.epsilon()
+        y_flat = ops.reshape(y_pred, (-1,))
+        g_flat = ops.reshape(gender, (-1,))     # 1=Mujer, 0=Hombre
 
-        n_F  = K.sum(g_flat) + eps
-        n_M  = K.sum(1.0 - g_flat) + eps
+        n_F  = ops.sum(g_flat) + eps
+        n_M  = ops.sum(1.0 - g_flat) + eps
 
-        mean_F = K.sum(y_flat * g_flat)          / n_F
-        mean_M = K.sum(y_flat * (1.0 - g_flat))  / n_M
+        mean_F = ops.sum(y_flat * g_flat)          / n_F
+        mean_M = ops.sum(y_flat * (1.0 - g_flat))  / n_M
 
-        dp = K.abs(mean_F - mean_M)
+        dp = ops.absolute(mean_F - mean_M)
 
         return bce + self.lambda_fair * dp
 
