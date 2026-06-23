@@ -171,6 +171,23 @@ python uncertainty_experiment.py     # Análisis de incertidumbre FAIR λ=1.0
 
 ---
 
+## Pipeline POO Dani
+
+La implementacion POO de Dani vive aislada en `src/dani_credit/`, sin
+sobrescribir los modulos originales de Marco en `src/`.
+
+- Notebook principal: `notebooks/01_mvp_dani_professional.ipynb`
+- Documentacion tecnica: `docs_dani/`
+- Tests de regresion: `tests/test_dani_uncertainty_regressions.py`
+
+La incertidumbre MVP usa el esquema `M1 -> M2`: M2 aprende el error absoluto de
+M1 sobre validation. La version corregida usa salida `softplus`, normalizacion
+interna de las features de M2, clipping final a `[0, 1]` y validaciones para no
+guardar una incertidumbre constante. `EXT_NULL_COUNT` se conserva crudo en
+`ProcessedSplitDataset` y se reporta con valores semanticos `0`, `1`, `2` o `3`.
+
+---
+
 ## Entregables
 
 - 📓 **Notebook principal** — `Taller_B4_T1.ipynb` (12 features del enunciado)

@@ -182,6 +182,9 @@ class ProcessedSplitDataset:
         train_ids: Original `SK_ID_CURR` values for train rows.
         val_ids: Original `SK_ID_CURR` values for validation rows.
         test_ids: Original `SK_ID_CURR` values for test rows.
+        ext_null_count_train: Raw train EXT_SOURCE missing-count values.
+        ext_null_count_val: Raw validation EXT_SOURCE missing-count values.
+        ext_null_count_test: Raw test EXT_SOURCE missing-count values.
         feature_names: Names of the columns in the processed matrices.
         preprocessor: Fitted sklearn `ColumnTransformer`.
 
@@ -212,6 +215,13 @@ class ProcessedSplitDataset:
     train_ids: tuple[Any, ...]
     val_ids: tuple[Any, ...]
     test_ids: tuple[Any, ...]
+
+    # EXT_NULL_COUNT is preserved in its raw 0-3 form for uncertainty auditing.
+    # The processed matrix may contain a scaled version for modelling, but
+    # reports and plots must use these semantic values.
+    ext_null_count_train: np.ndarray
+    ext_null_count_val: np.ndarray
+    ext_null_count_test: np.ndarray
 
     # Feature names are essential for Block 5 ratio indices.
     feature_names: tuple[str, ...]
@@ -910,6 +920,24 @@ class HomeCreditFeaturePreprocessor:
         s_val = self._series_to_float32_array(raw_splits.s_val)
         s_test = self._series_to_float32_array(raw_splits.s_test)
 
+        # Preserve EXT_NULL_COUNT before scaling so Block 9 can audit
+        # missingness with values that still mean 0, 1, 2 or 3 missing sources.
+        ext_null_count_train = self._extract_raw_ext_null_count(
+            split_name="train",
+            X=raw_splits.X_train,
+            expected_rows=X_train.shape[0],
+        )
+        ext_null_count_val = self._extract_raw_ext_null_count(
+            split_name="validation",
+            X=raw_splits.X_val,
+            expected_rows=X_val.shape[0],
+        )
+        ext_null_count_test = self._extract_raw_ext_null_count(
+            split_name="test",
+            X=raw_splits.X_test,
+            expected_rows=X_test.shape[0],
+        )
+
         # Validate final arrays so downstream Keras code does not receive hidden
         # NaNs from an unexpected preprocessing issue.
         self._assert_no_nan("X_train", X_train)
@@ -929,6 +957,9 @@ class HomeCreditFeaturePreprocessor:
             train_ids=tuple(raw_splits.X_train.index.tolist()),
             val_ids=tuple(raw_splits.X_val.index.tolist()),
             test_ids=tuple(raw_splits.X_test.index.tolist()),
+            ext_null_count_train=ext_null_count_train,
+            ext_null_count_val=ext_null_count_val,
+            ext_null_count_test=ext_null_count_test,
             feature_names=self.feature_names,
             preprocessor=self._preprocessor,
         )
@@ -1097,6 +1128,57 @@ class HomeCreditFeaturePreprocessor:
 
         # Keras accepts 1D arrays for binary targets and sensitive side inputs.
         return series.to_numpy(dtype="float32", copy=True).reshape(-1)
+
+    def _extract_raw_ext_null_count(
+        self,
+        *,
+        split_name: str,
+        X: pd.DataFrame,
+        expected_rows: int,
+    ) -> np.ndarray:
+        """Extract raw EXT_NULL_COUNT values for audit-only metadata.
+
+        Args:
+            split_name: Human-readable split name for error messages.
+            X: Raw deterministic feature frame for one split.
+            expected_rows: Number of rows expected after preprocessing.
+
+        Returns:
+            One-dimensional integer array with values in `{0, 1, 2, 3}`.
+
+        Raises:
+            PreprocessingError: If the column is missing, misaligned or no
+                longer contains valid external-score missing-count values.
+        """
+
+        column = "EXT_NULL_COUNT"
+
+        if column not in X.columns:
+            raise PreprocessingError(f"{column} is missing in {split_name} split.")
+
+        values = X[column].to_numpy(copy=True).reshape(-1)
+
+        if values.shape[0] != expected_rows:
+            raise PreprocessingError(
+                f"{column} length for {split_name} split does not match X rows."
+            )
+
+        if pd.isna(values).any():
+            raise PreprocessingError(f"{column} contains NaN in {split_name} split.")
+
+        try:
+            numeric_values = values.astype("float64", copy=False)
+        except ValueError as exc:
+            raise PreprocessingError(
+                f"{column} in {split_name} split must be numeric."
+            ) from exc
+
+        if not np.all(np.isin(numeric_values, [0.0, 1.0, 2.0, 3.0])):
+            raise PreprocessingError(
+                f"{column} in {split_name} split must contain only 0, 1, 2 or 3."
+            )
+
+        return numeric_values.astype("int8", copy=False)
 
     def _assert_no_nan(self, name: str, array: np.ndarray) -> None:
         """Raise if a processed matrix still contains NaN.

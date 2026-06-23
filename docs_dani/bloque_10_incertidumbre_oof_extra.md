@@ -191,7 +191,9 @@ M2 se entrena igual que en Bloque 9:
 
 ```text
 loss = MAE
-salida = ReLU
+salida = softplus
+normalizacion interna de Z
+clipping final de incertidumbre a [0, 1]
 ```
 
 ## Entrenar M1 final

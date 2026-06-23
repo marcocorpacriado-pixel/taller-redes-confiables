@@ -31,10 +31,12 @@ requirements.txt
 Estado importante:
 
 ```text
-src/ esta vacio por ahora.
+src/dani_credit/ contiene la implementacion POO de Dani.
 ```
 
-Por tanto, todavia no existe codigo Python ejecutable del pipeline final. Lo que existe es la especificacion tecnica por bloques y la estructura de proyecto. Cuando se implementen los Bloques 6-15, el codigo de `src/` debe seguir exactamente estas decisiones.
+La documentacion de esta carpeta debe mantenerse alineada con el codigo real
+de `src/dani_credit/`. Los modulos originales de Marco en `src/` se tratan
+como una linea de trabajo separada y no se modifican salvo necesidad explicita.
 
 ## Materiales no considerados fuente de verdad
 
@@ -305,6 +307,9 @@ M2 se entrena con:
 
 ```text
 loss = MAE
+salida = softplus
+normalizacion interna de Z
+clipping final de incertidumbre a [0, 1]
 ```
 
 No se usa MSE como loss principal de M2.
@@ -316,6 +321,15 @@ M1 entrena en train
 M1 predice en validation
 M2 aprende error_val = abs(pred_val - y_val)
 M2 estima incertidumbre en test
+```
+
+Correccion aplicada:
+
+```text
+EXT_NULL_COUNT para reporting se conserva crudo en ProcessedSplitDataset
+No se extrae desde X_test procesado/escalado
+UncertaintyPredictionBuilder rechaza incertidumbre constante
+UncertaintyPredictionBuilder rechaza EXT_NULL_COUNT fuera de {0, 1, 2, 3}
 ```
 
 Limitacion declarada:
@@ -450,7 +464,7 @@ src/layers.py
 src/metrics.py
 src/models.py
 src/tuning.py
-src/uncertainty.py
+src/dani_credit/uncertainty.py
 src/plots.py
 ```
 

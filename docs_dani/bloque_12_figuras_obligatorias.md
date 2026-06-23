@@ -141,6 +141,10 @@ Para evitar que seaborn trate `y_true` como continuo, crear una columna string:
 
 ```python
 unc = pd.read_csv(tables_dir / "uncertainty_test.csv")
+
+assert unc["uncertainty"].nunique() > 1
+assert set(unc["EXT_NULL_COUNT"].unique()).issubset({0, 1, 2, 3})
+
 unc["target_group"] = unc["y_true"].map(
     {
         0: "Pago puntual (TARGET=0)",
@@ -158,6 +162,11 @@ plt.xlabel("Incertidumbre estimada")
 plt.title("Distribucion de incertidumbre por TARGET real")
 plt.savefig(figures_dir / "uncertainty_distribution_by_target.png", dpi=200)
 ```
+
+Si la KDE queda poco informativa por concentracion de valores, usar
+`sns.histplot(..., stat="density", common_norm=False)` o un boxplot por grupo.
+Lo importante es que la figura compare distribuciones reales y que la
+incertidumbre no sea constante.
 
 Metricas a anadir:
 
