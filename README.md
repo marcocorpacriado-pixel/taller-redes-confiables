@@ -3,6 +3,37 @@
 > **Justicia e Incertidumbre en la Concesión de Crédito**  
 > Instituto BME · Junio de 2026
 
+## Entregable canónico actual: MVP POO Dani
+
+El entregable principal validado para la defensa es el pipeline POO de Dani:
+
+- Notebook ejecutable principal: `notebooks/01_mvp_dani_professional.ipynb`
+- Código del pipeline: `src/dani_credit/`
+- Tests de regresión: `tests/test_dani_uncertainty_regressions.py`
+- Documentación técnica auxiliar: `docs_dani/`
+- Resultados locales generados por el notebook: `results/`
+
+No usar `results_dani/` como fuente de resultados: corresponde a una ejecución
+local antigua previa a la corrección de incertidumbre y no forma parte del
+entregable defendible.
+
+Validación del MVP Dani:
+
+- Notebook ejecutado completo: 21/21 celdas, 0 errores.
+- Tests de regresión: 4 passed.
+- AUC base: 0.7436.
+- AUC FAIR: 0.7380.
+- `abs_rho` base: 0.0971.
+- `abs_rho` FAIR: 0.0088.
+- Incertidumbre M2 no constante: 46,040 valores únicos.
+- `EXT_NULL_COUNT` preservado con valores semánticos `{0, 1, 2, 3}`.
+
+En este notebook se selecciona `lambda_fair=5.0` porque, con el pipeline Dani
+de features y validación, ofrece una reducción muy alta de dependencia con
+género manteniendo una caída moderada de AUC. Este resultado no debe compararse
+directamente con experimentos previos de Marco basados en otro conjunto de
+features, otro protocolo experimental y otra familia de artefactos.
+
 ## Descripción
 
 Diseño, entrenamiento y auditoría de un modelo de clasificación neuronal

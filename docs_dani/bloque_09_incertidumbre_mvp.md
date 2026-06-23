@@ -456,7 +456,7 @@ que sera usado por Bloques 11 y 12.
 ## Ejecucion recomendada
 
 ```python
-from src.uncertainty import (
+from src.dani_credit.uncertainty import (
     FairModelLoader,
     UncertaintyArtifactPaths,
     UncertaintyModelConfig,
