@@ -1,11 +1,19 @@
 """Tests for unified experiment orchestration helpers."""
 
+import json
+
+import numpy as np
 import pandas as pd
 import pytest
 
 from src.trustworthy_credit.experiments import (
     ExperimentError,
+    FeatureAblationReporter,
     ExperimentRunResult,
+    MCDropoutArtifactReporter,
+    ModelProgressionReporter,
+    ModelProgressionSpec,
+    MultiSeedParetoArtifactReporter,
     MultiSeedParetoConfig,
     MultiSeedParetoRunner,
     MultiSeedParetoSummarizer,
@@ -114,3 +122,100 @@ def test_multiseed_summarizer_rejects_invalid_results_table() -> None:
         summarizer.summarize(
             pd.DataFrame({"seed": [1], "lambda_fair": [0.0], "auc": [0.74]})
         )
+
+
+def test_model_progression_reporter_summarizes_history_json(tmp_path) -> None:
+    """Model progression reporter should read Keras histories without training."""
+
+    history_path = tmp_path / "M_test_history.json"
+    history_path.write_text(
+        json.dumps(
+            {
+                "auc": [0.60, 0.70, 0.69],
+                "val_auc": [0.55, 0.72, 0.71],
+                "loss": [0.90, 0.80, 0.75],
+                "val_loss": [0.95, 0.82, 0.83],
+            }
+        ),
+        encoding="utf-8",
+    )
+    spec = ModelProgressionSpec(
+        model_id="MX",
+        model_name="Test model",
+        technical_idea="Synthetic history for unit testing.",
+        history_filename=history_path.name,
+        reported_val_auc=0.72,
+        reported_test_auc=0.73,
+        n_params=123,
+    )
+
+    summary = ModelProgressionReporter(
+        checkpoints_dir=tmp_path,
+        specs=(spec,),
+    ).summarize()
+
+    assert summary.loc[0, "model_id"] == "MX"
+    assert summary.loc[0, "history_found"]
+    assert summary.loc[0, "epochs"] == 3
+    assert summary.loc[0, "best_epoch"] == 2
+    assert summary.loc[0, "history_best_val_auc"] == pytest.approx(0.72)
+    assert summary.loc[0, "reported_test_auc"] == pytest.approx(0.73)
+    assert summary.loc[0, "test_auc_gain_vs_m0"] == pytest.approx(0.0)
+
+
+def test_multiseed_artifact_reporter_standardizes_aggregated_csv(tmp_path) -> None:
+    """Saved aggregated Pareto artifacts should be normalized for reporting."""
+
+    artifact_path = tmp_path / "pareto_v2_results.csv"
+    pd.DataFrame(
+        {
+            "lambda": [0.0, 1.0],
+            "auc": [0.746, 0.742],
+            "auc_std": [0.001, 0.002],
+            "dp": [0.030, 0.003],
+            "dp_std": [0.001, 0.001],
+            "mean_F": [0.07, 0.075],
+            "mean_M": [0.10, 0.078],
+        }
+    ).to_csv(artifact_path, index=False)
+
+    summary = MultiSeedParetoArtifactReporter().summarize(artifact_path)
+
+    assert summary["lambda_fair"].tolist() == [0.0, 1.0]
+    assert summary.loc[0, "auc_mean"] == pytest.approx(0.746)
+    assert summary.loc[1, "abs_rho_mean"] == pytest.approx(0.003)
+    assert summary.loc[1, "fairness_reduction"] == pytest.approx(0.9)
+    assert summary.loc[1, "auc_delta_vs_baseline"] == pytest.approx(-0.004)
+    assert summary.loc[0, "n_runs"] == 3
+
+
+def test_mc_dropout_artifact_reporter_summarizes_saved_arrays(tmp_path) -> None:
+    """MC Dropout reporter should summarize saved mean/variance arrays."""
+
+    np.save(tmp_path / "mc_fair_mean.npy", np.array([0.1, 0.2, 0.3]))
+    np.save(tmp_path / "mc_fair_var.npy", np.array([0.01, 0.02, 0.04]))
+
+    reporter = MCDropoutArtifactReporter(checkpoints_dir=tmp_path)
+    summary = reporter.saved_array_summary(prefixes=("mc_fair",))
+    audited = reporter.audited_summary()
+
+    assert summary.loc[0, "artifact"] == "mc_fair"
+    assert summary.loc[0, "n_samples"] == 3
+    assert summary.loc[0, "median_prediction"] == pytest.approx(0.2)
+    assert summary.loc[0, "median_variance"] == pytest.approx(0.02)
+    assert "target_1_to_0_variance_ratio" in audited.columns
+    assert audited.loc[audited["model"] == "FAIR lambda=1.0", "target_1_to_0_variance_ratio"].iloc[0] > 1.0
+
+
+def test_feature_ablation_reporter_reports_auc_gain() -> None:
+    """Feature ablation reporter should quantify the 12-to-42-feature lift."""
+
+    summary = FeatureAblationReporter().summarize()
+
+    assert set(summary.columns) >= {
+        "model",
+        "auc_12_features",
+        "auc_42_features",
+        "auc_gain_42_vs_12",
+    }
+    assert (summary["auc_gain_42_vs_12"] > 0).all()

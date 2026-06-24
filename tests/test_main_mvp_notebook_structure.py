@@ -114,7 +114,8 @@ def test_main_mvp_notebook_has_real_execution_cells() -> None:
         "ProbabilityMetricCalculator",
         "UncertaintyMVPTrainer",
         "MCDropoutUncertaintyEstimator",
-        "MultiSeedParetoSummarizer",
+        "MultiSeedParetoArtifactReporter",
+        "SquaredDemographicParityLoss",
         "uncertainty_test.csv",
         "pareto_auc_vs_fairness.png",
         "training_curves_base_vs_fair.png",
@@ -138,7 +139,7 @@ def test_main_mvp_notebook_uses_unified_package_imports() -> None:
     assert "src.trustworthy_credit" in code
     assert "src.dani_credit" not in code
     assert "MCDropoutUncertaintyEstimator" in code
-    assert "MultiSeedParetoSummarizer" in code
+    assert "MultiSeedParetoArtifactReporter" in code
 
 
 def test_main_mvp_notebook_code_cells_are_valid_python() -> None:
