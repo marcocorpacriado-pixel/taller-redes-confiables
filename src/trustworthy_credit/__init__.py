@@ -62,7 +62,6 @@ from .metrics import (
     ThresholdSelectionResult,
     ThresholdSelector,
 )
-
 __all__ = [
     "ColumnGroup",
     "DataContractError",
@@ -185,6 +184,13 @@ _TENSORFLOW_EXPORTS = [
     "UncertaintySummaryBuilder",
     "UncertaintyTrainingData",
     "UncertaintyTrainingDataBuilder",
+    "ReproducibleDataResult",
+    "ReproducibleMVPConfig",
+    "ReproducibleMVPWorkflow",
+    "ReproducibleRunError",
+    "ReproducibleRunPaths",
+    "TestEvaluationBundle",
+    "timestamp_run_id",
 ]
 
 try:
@@ -266,6 +272,15 @@ try:
         UncertaintySummaryBuilder,
         UncertaintyTrainingData,
         UncertaintyTrainingDataBuilder,
+    )
+    from .reproducible_run import (
+        ReproducibleDataResult,
+        ReproducibleMVPConfig,
+        ReproducibleMVPWorkflow,
+        ReproducibleRunError,
+        ReproducibleRunPaths,
+        TestEvaluationBundle,
+        timestamp_run_id,
     )
 except ModuleNotFoundError as exc:
     if exc.name not in {"tensorflow", "keras_tuner"}:
