@@ -17,6 +17,7 @@ from src.trustworthy_credit.config import (
 )
 from src.trustworthy_credit.data_contract import HomeCreditMVPDataContract
 from src.trustworthy_credit.extended_features import ExtendedFeaturePreprocessingPipeline
+from src.trustworthy_credit.extended_training import ExtendedFeatureExperimentRunner
 from src.trustworthy_credit.fairness_experiments import SquaredDPSweepRunner
 from src.trustworthy_credit.layers import FairnessPenalty, FinancialRatiosLayer
 from src.trustworthy_credit.metrics import FairnessMetricCalculator
@@ -57,6 +58,10 @@ def test_unified_bridges_point_to_validated_dani_modules() -> None:
     assert (
         ExtendedFeaturePreprocessingPipeline.__module__
         == "src.trustworthy_credit.extended_features"
+    )
+    assert (
+        ExtendedFeatureExperimentRunner.__module__
+        == "src.trustworthy_credit.extended_training"
     )
     assert (
         SquaredDPSweepRunner.__module__
