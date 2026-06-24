@@ -39,33 +39,62 @@ def test_main_mvp_notebook_contains_expected_sections() -> None:
     )
 
     expected_sections = [
-        "# mvp unificado",
+        "# sistema neuronal confiable para concesion de credito",
+        "## mapa del notebook",
         "## 0. configuracion global",
-        "## 1. inventario de datos disponibles",
+        "## 1. problema, datos y contrato",
         "## 2. carga de datos principales",
         "## 3. eda: desbalance de clase y variable sensible",
         "## 4. eda: valores ausentes y calidad de fuentes externas",
         "## 5. eda: variables financieras y fuentes externas",
-        "## 6. pipeline mvp: contrato, transformaciones y split",
+        "## 6. preprocesamiento sin leakage",
         "## 7. auditoria del preprocesamiento",
         "## 8. arquitectura customizada",
-        "## 9. automl con keras tuner",
-        "## 10. barrido de `lambda_fair`",
-        "## 11. curva de pareto: rendimiento vs dependencia fair",
-        "### 11.1 contraste multi-semilla de la curva de pareto",
-        "## 12. seleccion de modelos finales",
-        "## 13. curvas de convergencia",
-        "## 14. evaluacion final en test",
-        "## 15. comparativa visual en test",
-        "## 16. incertidumbre mvp",
-        "### 16.1 contraste de incertidumbre con mc dropout",
-        "## 17. distribucion de incertidumbre por clasificacion",
-        "## 18. ext_source e incertidumbre",
-        "## 19. resumen ejecutivo del mvp",
+        "## 9. progresion experimental m0-m6",
+        "## 10. fair loss y objetivo de justicia",
+        "## 11. automl con keras tuner",
+        "## 12. barrido de `lambda_fair`",
+        "## 13. pareto principal: rendimiento vs dependencia fair",
+        "## 14. robustez de pareto: contraste multi-semilla",
+        "## 15. seleccion de modelos finales",
+        "## 16. curvas de convergencia",
+        "## 17. evaluacion final en test",
+        "## 18. comparativa visual en test",
+        "## 19. incertidumbre principal: modelo m2",
+        "## 20. contraste de incertidumbre: mc dropout",
+        "## 21. distribucion de incertidumbre por clase predicha",
+        "## 22. calidad de datos: `ext_null_count` e incertidumbre",
+        "## 23. ablacion informacional: 12 vs 42 features",
+        "## 24. conclusiones y limitaciones",
     ]
 
     for section in expected_sections:
         assert section in markdown
+
+
+def test_main_mvp_notebook_markdown_is_final_facing() -> None:
+    """The final notebook narrative should not describe personal integration history."""
+
+    notebook = nbformat.read(NOTEBOOK_PATH, as_version=4)
+    markdown = _normalize_text(
+        "\n".join(
+            "".join(cell.get("source", ""))
+            for cell in notebook.cells
+            if cell.get("cell_type") == "markdown"
+        )
+    )
+
+    forbidden_terms = [
+        "dani",
+        "marco",
+        "javi",
+        "aportaciones",
+        "notebook profesional",
+        "pegotes",
+    ]
+
+    for term in forbidden_terms:
+        assert term not in markdown
 
 
 def test_main_mvp_notebook_has_real_execution_cells() -> None:
