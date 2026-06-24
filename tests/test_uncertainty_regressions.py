@@ -1,4 +1,4 @@
-"""Regression tests for Dani's uncertainty and audit metadata pipeline."""
+"""Regression tests for the uncertainty and audit metadata pipeline."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.dani_credit.preprocessing import (
+from src.trustworthy_credit.preprocessing import (
     HomeCreditFeaturePreprocessor,
     PreprocessingColumnSpec,
     RawSplitDataset,
@@ -17,7 +17,7 @@ def test_m2_softplus_head_produces_non_constant_synthetic_uncertainty() -> None:
     """M2 should learn a non-constant error signal on a simple synthetic case."""
 
     tf = pytest.importorskip("tensorflow")
-    uncertainty_module = pytest.importorskip("src.dani_credit.uncertainty")
+    uncertainty_module = pytest.importorskip("src.trustworthy_credit.uncertainty")
 
     tf.keras.utils.set_random_seed(123)
 
@@ -69,7 +69,7 @@ def test_m2_softplus_head_produces_non_constant_synthetic_uncertainty() -> None:
 def test_prediction_builder_rejects_constant_uncertainty() -> None:
     """A constant uncertainty vector should fail before artifacts are saved."""
 
-    uncertainty_module = pytest.importorskip("src.dani_credit.uncertainty")
+    uncertainty_module = pytest.importorskip("src.trustworthy_credit.uncertainty")
 
     builder = uncertainty_module.UncertaintyPredictionBuilder()
 
@@ -112,7 +112,7 @@ def test_processed_dataset_preserves_raw_ext_null_count_values() -> None:
 def test_prediction_builder_rejects_scaled_ext_null_count_values() -> None:
     """Scaled EXT_NULL_COUNT values such as -1.0 are invalid for reporting."""
 
-    uncertainty_module = pytest.importorskip("src.dani_credit.uncertainty")
+    uncertainty_module = pytest.importorskip("src.trustworthy_credit.uncertainty")
 
     builder = uncertainty_module.UncertaintyPredictionBuilder()
 
