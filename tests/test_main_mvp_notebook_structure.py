@@ -116,6 +116,7 @@ def test_main_mvp_notebook_has_real_execution_cells() -> None:
         "MCDropoutUncertaintyEstimator",
         "MultiSeedParetoArtifactReporter",
         "SquaredDemographicParityLoss",
+        "ExtendedFeaturePreprocessingPipeline",
         "uncertainty_test.csv",
         "pareto_auc_vs_fairness.png",
         "training_curves_base_vs_fair.png",
