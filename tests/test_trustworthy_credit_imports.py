@@ -19,6 +19,7 @@ from src.trustworthy_credit.data_contract import HomeCreditMVPDataContract
 from src.trustworthy_credit.extended_features import ExtendedFeaturePreprocessingPipeline
 from src.trustworthy_credit.layers import FairnessPenalty, FinancialRatiosLayer
 from src.trustworthy_credit.metrics import FairnessMetricCalculator
+from src.trustworthy_credit.model_progression import ModelProgressionRunner
 from src.trustworthy_credit.models import FairCustomModelBuilder
 from src.trustworthy_credit.preprocessing import (
     HomeCreditMVPPreprocessingPipeline,
@@ -46,6 +47,10 @@ def test_unified_bridges_point_to_validated_dani_modules() -> None:
     assert FairnessPenalty.__module__ == "src.dani_credit.layers"
     assert FairCustomModelBuilder.__module__ == "src.dani_credit.models"
     assert FairnessMetricCalculator.__module__ == "src.dani_credit.metrics"
+    assert (
+        ModelProgressionRunner.__module__
+        == "src.trustworthy_credit.model_progression"
+    )
     assert FairLambdaSweepTrainer.__module__ == "src.dani_credit.tuning"
     assert UncertaintyMVPTrainer.__module__ == "src.dani_credit.uncertainty"
     assert (
