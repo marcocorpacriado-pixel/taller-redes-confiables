@@ -20,6 +20,11 @@ validado. El notebook de extras es complementario: no modifica el MVP y concentr
 los experimentos relacionales con LightGBM/XGBoost, la comparación de 12 frente a
 42 features y la variante FAIR cuadrática.
 
+En este repositorio, **MVP** significa **Producto Mínimo Viable**: el flujo
+obligatorio, reproducible y defendible del taller. No significa que el modelo sea
+básico o incompleto; significa que concentra los requisitos centrales sin mezclar
+experimentos secundarios que puedan dificultar la evaluación.
+
 ## Objetivo
 
 El proyecto aborda tres requisitos del taller:
