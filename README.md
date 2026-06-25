@@ -1,9 +1,9 @@
 # Taller B4-T1 - Redes Neuronales Confiables
 
-Repositorio del proyecto de clasificacion de riesgo de impago sobre
-Home Credit Default Risk. El entregable implementa una red neuronal
-confiable que combina arquitectura custom, aprendizaje justo, busqueda
-AutoML e incertidumbre sobre las predicciones.
+Repositorio del proyecto de clasificación de riesgo de impago sobre Home Credit
+Default Risk. El entregable final combina una red neuronal confiable, aprendizaje
+justo, búsqueda AutoML, estimación de incertidumbre y un notebook de extras para
+estudiar el techo predictivo con tablas relacionales.
 
 ## Entregable Oficial
 
@@ -12,25 +12,22 @@ El flujo final del proyecto se ejecuta desde:
 - Notebook principal: `notebooks/01_final_mvp.ipynb`
 - Notebook de extras: `notebooks/02_extras_grade10.ipynb`
 - Paquete Python principal: `src/trustworthy_credit/`
-- Tests de regresion: `tests/test_uncertainty_regressions.py`
-- Material historico archivado: `legacy/`
+- Tests automatizados: `tests/`
+- Material histórico archivado: `legacy/`
 
-El notebook principal es el unico cuaderno necesario para reproducir el MVP
-validado. Los notebooks, scripts y documentos antiguos se conservan en
-`legacy/` solo por trazabilidad.
-
-El notebook de extras es complementario: no modifica el MVP y concentra los
-experimentos relacionales con LightGBM/XGBoost para mostrar el techo predictivo
-cuando se usan todas las tablas de Home Credit.
+El notebook principal es el único cuaderno necesario para reproducir el MVP
+validado. El notebook de extras es complementario: no modifica el MVP y concentra
+los experimentos relacionales con LightGBM/XGBoost, la comparación de 12 frente a
+42 features y la variante FAIR cuadrática.
 
 ## Objetivo
 
 El proyecto aborda tres requisitos del taller:
 
-1. Precision predictiva para detectar solicitudes con riesgo de impago.
-2. Justicia estadistica, reduciendo la dependencia entre prediccion y genero.
+1. Precisión predictiva para detectar solicitudes con riesgo de impago.
+2. Justicia estadística, reduciendo la dependencia entre predicción y género.
 3. Honestidad del modelo, estimando incertidumbre para identificar casos que
-   deberian revisarse con mas cautela.
+   deberían revisarse con más cautela.
 
 La variable objetivo es `TARGET` y la variable sensible principal es
 `CODE_GENDER`.
@@ -39,78 +36,139 @@ La variable objetivo es `TARGET` y la variable sensible principal es
 
 ```text
 taller-redes-confiables/
-├── README.md
-├── requirements.txt
-├── notebooks/
-│   └── 01_final_mvp.ipynb
-├── src/
-│   └── trustworthy_credit/
-│       ├── data_contract.py
-│       ├── preprocessing.py
-│       ├── splitting.py
-│       ├── layers.py
-│       ├── models.py
-│       ├── metrics.py
-│       ├── tuning.py
-│       └── uncertainty.py
-├── tests/
-│   └── test_uncertainty_regressions.py
-├── legacy/
-│   ├── development/
-│   └── original_experiments/
-└── data/
-    └── raw/
+|-- README.md
+|-- requirements.txt
+|-- notebooks/
+|   |-- 01_final_mvp.ipynb
+|   `-- 02_extras_grade10.ipynb
+|-- src/
+|   `-- trustworthy_credit/
+|       |-- data_contract.py
+|       |-- preprocessing.py
+|       |-- splitting.py
+|       |-- layers.py
+|       |-- models.py
+|       |-- metrics.py
+|       |-- tuning.py
+|       |-- uncertainty.py
+|       |-- reproducible_run.py
+|       |-- relational_features.py
+|       |-- gbm_experiments.py
+|       `-- fairness_losses.py
+|-- tests/
+|   |-- test_reproducible_run_contract.py
+|   |-- test_uncertainty_regressions.py
+|   |-- test_relational_extras_contract.py
+|   `-- test_fairness_losses_contract.py
+|-- legacy/
+|   |-- development/
+|   `-- original_experiments/
+`-- data/
+    `-- raw/
 ```
 
-## Flujo Del Notebook
+## Flujo Del Notebook Principal
 
 `notebooks/01_final_mvp.ipynb` ejecuta el MVP completo:
 
-1. Configuracion de rutas, semillas y parametros.
+1. Configuración de rutas, semillas y parámetros.
 2. Carga del dataset `application_train.csv`.
-3. EDA breve y motivacion tecnica.
+3. EDA breve y motivación técnica.
 4. Split honesto train/validation/test.
 5. Preprocesamiento sin leakage.
 6. Entrenamiento de modelo base.
 7. Arquitectura custom con capas financieras.
-8. Busqueda AutoML y barrido de `lambda_fair`.
-9. Curva de Pareto AUC vs dependencia con genero.
-10. Evaluacion test: AUC, PR-AUC, F1, recall, rho, DPD y EOD.
+8. Búsqueda AutoML y barrido de `lambda_fair`.
+9. Curva de Pareto AUC frente a dependencia con género.
+10. Evaluación final en test: AUC, PR-AUC, F1, recall, rho, DPD y EOD.
 11. Incertidumbre M2 basada en error esperado del clasificador.
-12. Analisis de incertidumbre por clase real y por `EXT_NULL_COUNT`.
+12. Análisis de incertidumbre por clase real y por `EXT_NULL_COUNT`.
+
+Los artefactos del MVP se guardan en `results/runs/<run_id>/`. Esa carpeta está
+ignorada por Git para no versionar modelos, predicciones ni resultados pesados.
+
+## Flujo Del Notebook De Extras
 
 `notebooks/02_extras_grade10.ipynb` ejecuta los extras:
 
-1. Verificacion de las ocho tablas CSV del dataset.
-2. Feature engineering relacional en POO.
-3. Agregacion a una fila por `SK_ID_CURR` desde bureau, previous applications,
+1. Verificación de las ocho tablas CSV del dataset.
+2. Comparación intermedia entre 12 y 42 features de `application_train`.
+3. Feature engineering relacional en POO.
+4. Agregación a una fila por `SK_ID_CURR` desde bureau, previous applications,
    installments, POS cash y credit card.
-4. LightGBM OOF sobre el dataset enriquecido.
-5. XGBoost OOF preparado como contraste opcional.
-6. Sweep de penalizacion FAIR cuadratica sobre la arquitectura neuronal.
-7. Comparacion contra el MVP neuronal y resumen de artefactos.
+5. LightGBM OOF sobre el dataset relacional enriquecido.
+6. XGBoost OOF como contraste independiente de boosting.
+7. Sweep de penalización FAIR cuadrática sobre la arquitectura neuronal.
+8. Comparación global contra el MVP neuronal y resumen de artefactos.
 
 Los artefactos de extras se guardan en `results/extras/<run_id>/`, separados de
-`results/runs/<run_id>/` y de los resultados historicos del MVP.
+`results/runs/<run_id>/` y de cualquier resultado histórico suelto en
+`results/tables/`.
 
-## Resultados Validados Del MVP
+## Runs Canónicos
 
-La ejecucion validada del MVP produjo:
+Los resultados publicados en esta sección corresponden a las últimas ejecuciones
+validadas localmente.
 
-- AUC base test: 0.7436.
-- AUC FAIR test: 0.7380.
-- `|rho|` base test: 0.0971.
-- `|rho|` FAIR test: 0.0088.
-- Reduccion aproximada de dependencia lineal con genero: 91%.
-- Incertidumbre no constante en test.
-- `EXT_NULL_COUNT` conservado con valores semanticos `{0, 1, 2, 3}`.
+### MVP
 
-La pequena perdida de AUC se acepta como trade-off para obtener una reduccion
-fuerte de dependencia con la variable sensible.
+Run canónico:
 
-## Instalacion
+```text
+results/runs/20260624_214719
+```
 
-Se recomienda usar un entorno virtual de Python. Desde la raiz del repositorio:
+| Métrica | Base | FAIR |
+| --- | ---: | ---: |
+| AUC test | 0.743811 | 0.738011 |
+| PR-AUC test | 0.223342 | 0.218635 |
+| Accuracy test | 0.666139 | 0.673033 |
+| Recall test | 0.696294 | 0.678303 |
+| F1 test | 0.251919 | 0.250919 |
+| `|rho|` test | 0.100951 | 0.002211 |
+| DPD test | 0.090622 | 0.022133 |
+| EOD test | 0.081288 | 0.011903 |
+
+Lectura principal:
+
+- La pérdida de AUC al pasar de Base a FAIR es de `0.005800`.
+- La dependencia lineal con género baja de `0.100951` a `0.002211`.
+- La reducción relativa de `|rho|` es aproximadamente `97.8%`.
+- La incertidumbre M2 genera `46,052` valores únicos en test, por lo que no está
+  colapsada.
+- `EXT_NULL_COUNT` conserva los valores semánticos `{0, 1, 2, 3}`.
+
+### Extras
+
+Run canónico:
+
+```text
+results/extras/20260625_113552
+```
+
+| Experimento | Métrica | Valor |
+| --- | --- | ---: |
+| Red neuronal 42 features | AUC test auditado | 0.755500 |
+| LightGBM relacional | OOF AUC | 0.796264 |
+| XGBoost relacional | OOF AUC | 0.795414 |
+| Cuadrática FAIR alpha=0.5 | AUC test | 0.740491 |
+| Cuadrática FAIR alpha=0.5 | `|rho|` test | 0.039893 |
+| Cuadrática FAIR alpha=0.5 | DPD test | 0.046588 |
+| Cuadrática FAIR alpha=0.5 | EOD test | 0.036503 |
+
+Lectura principal:
+
+- LightGBM y XGBoost elevan el techo predictivo al usar información relacional
+  completa.
+- La red de 42 features muestra una mejora intermedia sin usar tablas
+  relacionales.
+- La variante cuadrática es un análisis de sensibilidad de fairness; no sustituye
+  al FAIR principal del MVP.
+
+## Instalación
+
+Se recomienda usar Python 3.11 y un entorno virtual. Desde la raíz del
+repositorio:
 
 ```bash
 python -m pip install -r requirements.txt
@@ -122,7 +180,7 @@ Para ejecutar tests:
 python -m pytest -q
 ```
 
-En la maquina de desarrollo usada para el proyecto tambien se valido con:
+En la máquina de desarrollo usada para el proyecto también se validó con:
 
 ```powershell
 C:\venvs\homecredit311\Scripts\python.exe -m pytest -q
@@ -130,14 +188,14 @@ C:\venvs\homecredit311\Scripts\python.exe -m pytest -q
 
 ## Datos
 
-El repositorio no incluye datasets de Kaggle. Para ejecutar el notebook, coloca
-el archivo principal en:
+El repositorio no incluye datasets de Kaggle. Para ejecutar el notebook
+principal, coloca el archivo principal en:
 
 ```text
 data/raw/application_train.csv
 ```
 
-Para ejecutar el notebook de extras coloca tambien:
+Para ejecutar el notebook de extras coloca también:
 
 ```text
 data/raw/application_test.csv
@@ -154,35 +212,48 @@ No deben subirse a GitHub:
 - `data/`
 - `results/`
 - `results_dani/`
+- `results_dani_old_broken_do_not_use/`
 - `.venv/`
+- `kt_dir/`
 - modelos `.keras`
-- artefactos temporales de tuning
+- artefactos temporales de entrenamiento o tuning
 
 ## Paquete Principal
 
-El codigo reutilizable vive en `src/trustworthy_credit/`:
+El código reutilizable vive en `src/trustworthy_credit/`:
 
 - `data_contract.py`: contratos de columnas y validaciones de entrada.
-- `splitting.py`: particion estratificada y estructuras de splits.
-- `preprocessing.py`: imputacion, escalado, codificacion y preservacion de
-  variables semanticas de auditoria.
+- `splitting.py`: partición estratificada y estructuras de splits.
+- `preprocessing.py`: imputación, escalado, codificación y preservación de
+  variables semánticas de auditoría.
 - `layers.py`: capas customizadas de Keras.
-- `models.py`: construccion de modelos neuronales.
-- `metrics.py`: metricas predictivas y de fairness.
+- `models.py`: construcción de modelos neuronales.
+- `metrics.py`: métricas predictivas y de fairness.
 - `tuning.py`: AutoML, barrido de arquitectura y barrido de fairness.
 - `uncertainty.py`: modelo M2 de incertidumbre y artefactos asociados.
+- `reproducible_run.py`: orquestación reproducible del MVP en
+  `results/runs/<run_id>/`.
 - `relational_features.py`: feature engineering relacional para los extras.
 - `gbm_experiments.py`: runners OOF de LightGBM/XGBoost y artefactos de extras.
-- `fairness_losses.py`: sweep neuronal de penalizacion FAIR cuadratica.
+- `fairness_losses.py`: sweep neuronal de penalización FAIR cuadrática.
+
+## Tests
+
+La suite cubre los contratos más importantes del entregable:
+
+- aislamiento de artefactos del MVP en `results/runs/<run_id>/`;
+- preservación de metadatos de incertidumbre;
+- contratos del pipeline relacional de extras;
+- aislamiento de artefactos de la variante FAIR cuadrática.
 
 ## Legacy
 
-La carpeta `legacy/` contiene material historico que ya no forma parte del
-camino oficial de ejecucion:
+La carpeta `legacy/` contiene material histórico que ya no forma parte del camino
+oficial de ejecución:
 
 - `legacy/original_experiments/`: scripts, notebooks, checkpoints, reportes y
   figuras de experimentos previos.
-- `legacy/development/validated_mvp_build_notes/`: notas tecnicas y notebook de
+- `legacy/development/validated_mvp_build_notes/`: notas técnicas y notebook de
   desarrollo conservados para trazabilidad.
 
 Este material no debe usarse como punto de entrada del proyecto final.

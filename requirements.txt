@@ -1,25 +1,21 @@
+numpy>=1.26.0,<2.0.0
 pandas>=2.0.0
-numpy>=1.26.0
-scikit-learn>=1.2.0
-keras>=3.0.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-kagglehub>=0.2.0
-pandas>=2.0.0
-numpy>=1.26.0
 scipy>=1.11.0
 scikit-learn>=1.2.0
 fairlearn>=0.10.0
-xgboost>=2.0.0
-lightgbm>=4.0.0
-keras>=2.15.0
+
+tensorflow[and-cuda]>=2.15.0,<2.16.0; platform_system == "Linux"
+tensorflow>=2.15.0,<2.16.0; platform_system != "Linux"
 keras-tuner>=1.4.6
-tensorflow[and-cuda]>=2.16.0; platform_system == "Linux"
-tensorflow>=2.15.0; platform_system != "Linux"
-tensorboard>=2.15.0
+tensorboard>=2.15.0,<2.16.0
+
+lightgbm>=4.0.0
+xgboost>=2.0.0
+
 matplotlib>=3.7.0
 seaborn>=0.12.0
 kagglehub>=0.2.0
+
 ipykernel>=6.29.0
 jupyter>=1.1.0
 nbformat>=5.10.0

@@ -3,45 +3,42 @@
 venv/
 env/
 
-# Archivos de caché de Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
-
-# Archivos de sistema operativo
-.DS_Store
-Thumbs.db"application_train.csv" 
-# Entornos virtuales
-.venv/
-venv/
-env/
+# Configuración local de editores
 .vscode/
 
-# Archivos de caché de Python
+# Cachés de Python y tests
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Jupyter Notebook checkpoints
+# Jupyter
 .ipynb_checkpoints/
 
-# Archivos de sistema operativo
+# Sistema operativo
 .DS_Store
 Thumbs.db
 
 # Datos locales de Kaggle
-application_train.csv
-application_test.csv
 data/
 raw_data/
+application_train.csv
+application_test.csv
+bureau.csv
+bureau_balance.csv
+previous_application.csv
+installments_payments.csv
+POS_CASH_balance.csv
+credit_card_balance.csv
 
 # Artefactos generados localmente
 results/
 results_dani/
+results_dani_old_broken_do_not_use/
 kt_dir/
 *.keras
+*.h5
+*.npy
