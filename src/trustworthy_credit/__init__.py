@@ -210,10 +210,16 @@ _TENSORFLOW_EXPORTS = [
     "FairLambdaSweepTrainer",
     "FairTunerBuildFunctionFactory",
     "FairTuningCallbackFactory",
+    "FairnessLossExperimentError",
     "lambda_slug",
     "LambdaSweepResult",
     "ParetoModelSelector",
     "ParetoResultRow",
+    "SquaredFairnessComparisonRunner",
+    "SquaredFairnessExperimentPaths",
+    "SquaredFairnessResultInterpreter",
+    "SquaredFairnessRunResult",
+    "SquaredFairnessTrainingConfig",
     "TunerSearchResult",
     "TuningArtifactPaths",
     "TuningConfig",
@@ -307,6 +313,14 @@ try:
         TrainingArtifactWriter,
         ValidationParetoEvaluator,
         ValidationThresholdSelector,
+    )
+    from .fairness_losses import (
+        FairnessLossExperimentError,
+        SquaredFairnessComparisonRunner,
+        SquaredFairnessExperimentPaths,
+        SquaredFairnessResultInterpreter,
+        SquaredFairnessRunResult,
+        SquaredFairnessTrainingConfig,
     )
     from .uncertainty import (
         DualInputModelPredictor,

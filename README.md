@@ -87,7 +87,8 @@ taller-redes-confiables/
    installments, POS cash y credit card.
 4. LightGBM OOF sobre el dataset enriquecido.
 5. XGBoost OOF preparado como contraste opcional.
-6. Comparacion contra el MVP neuronal y resumen de artefactos.
+6. Sweep de penalizacion FAIR cuadratica sobre la arquitectura neuronal.
+7. Comparacion contra el MVP neuronal y resumen de artefactos.
 
 Los artefactos de extras se guardan en `results/extras/<run_id>/`, separados de
 `results/runs/<run_id>/` y de los resultados historicos del MVP.
@@ -172,6 +173,7 @@ El codigo reutilizable vive en `src/trustworthy_credit/`:
 - `uncertainty.py`: modelo M2 de incertidumbre y artefactos asociados.
 - `relational_features.py`: feature engineering relacional para los extras.
 - `gbm_experiments.py`: runners OOF de LightGBM/XGBoost y artefactos de extras.
+- `fairness_losses.py`: sweep neuronal de penalizacion FAIR cuadratica.
 
 ## Legacy
 
