@@ -10,6 +10,7 @@ AutoML e incertidumbre sobre las predicciones.
 El flujo final del proyecto se ejecuta desde:
 
 - Notebook principal: `notebooks/01_final_mvp.ipynb`
+- Notebook de extras: `notebooks/02_extras_grade10.ipynb`
 - Paquete Python principal: `src/trustworthy_credit/`
 - Tests de regresion: `tests/test_uncertainty_regressions.py`
 - Material historico archivado: `legacy/`
@@ -17,6 +18,10 @@ El flujo final del proyecto se ejecuta desde:
 El notebook principal es el unico cuaderno necesario para reproducir el MVP
 validado. Los notebooks, scripts y documentos antiguos se conservan en
 `legacy/` solo por trazabilidad.
+
+El notebook de extras es complementario: no modifica el MVP y concentra los
+experimentos relacionales con LightGBM/XGBoost para mostrar el techo predictivo
+cuando se usan todas las tablas de Home Credit.
 
 ## Objetivo
 
@@ -74,6 +79,20 @@ taller-redes-confiables/
 11. Incertidumbre M2 basada en error esperado del clasificador.
 12. Analisis de incertidumbre por clase real y por `EXT_NULL_COUNT`.
 
+`notebooks/02_extras_grade10.ipynb` ejecuta los extras:
+
+1. Verificacion de las ocho tablas CSV del dataset.
+2. Feature engineering relacional en POO.
+3. Agregacion a una fila por `SK_ID_CURR` desde bureau, previous applications,
+   installments, POS cash y credit card.
+4. LightGBM OOF sobre el dataset enriquecido.
+5. XGBoost OOF preparado como contraste opcional.
+6. Sweep de penalizacion FAIR cuadratica sobre la arquitectura neuronal.
+7. Comparacion contra el MVP neuronal y resumen de artefactos.
+
+Los artefactos de extras se guardan en `results/extras/<run_id>/`, separados de
+`results/runs/<run_id>/` y de los resultados historicos del MVP.
+
 ## Resultados Validados Del MVP
 
 La ejecucion validada del MVP produjo:
@@ -118,6 +137,18 @@ el archivo principal en:
 data/raw/application_train.csv
 ```
 
+Para ejecutar el notebook de extras coloca tambien:
+
+```text
+data/raw/application_test.csv
+data/raw/bureau.csv
+data/raw/bureau_balance.csv
+data/raw/previous_application.csv
+data/raw/installments_payments.csv
+data/raw/POS_CASH_balance.csv
+data/raw/credit_card_balance.csv
+```
+
 No deben subirse a GitHub:
 
 - `data/`
@@ -140,6 +171,9 @@ El codigo reutilizable vive en `src/trustworthy_credit/`:
 - `metrics.py`: metricas predictivas y de fairness.
 - `tuning.py`: AutoML, barrido de arquitectura y barrido de fairness.
 - `uncertainty.py`: modelo M2 de incertidumbre y artefactos asociados.
+- `relational_features.py`: feature engineering relacional para los extras.
+- `gbm_experiments.py`: runners OOF de LightGBM/XGBoost y artefactos de extras.
+- `fairness_losses.py`: sweep neuronal de penalizacion FAIR cuadratica.
 
 ## Legacy
 
