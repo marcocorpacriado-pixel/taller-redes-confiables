@@ -115,9 +115,14 @@ Los artefactos de extras se guardan en `results/extras/<run_id>/`, separados de
 Los resultados publicados en esta sección corresponden a las últimas ejecuciones
 validadas localmente.
 
+Las carpetas `results/` son artefactos locales ignorados por Git para evitar
+versionar modelos, predicciones y salidas pesadas. En GitHub, la evidencia
+revisable está en los notebooks ejecutados y en las tablas resumidas de este
+README.
+
 ### MVP
 
-Run canónico:
+Ejecución canónica local, reflejada en los outputs ejecutados del notebook:
 
 ```text
 results/runs/20260624_214719
@@ -130,22 +135,24 @@ results/runs/20260624_214719
 | Accuracy test | 0.666139 | 0.673033 |
 | Recall test | 0.696294 | 0.678303 |
 | F1 test | 0.251919 | 0.250919 |
-| `|rho|` test | 0.100951 | 0.002211 |
+| abs_rho test | 0.100951 | 0.002211 |
 | DPD test | 0.090622 | 0.022133 |
 | EOD test | 0.081288 | 0.011903 |
 
 Lectura principal:
 
 - La pérdida de AUC al pasar de Base a FAIR es de `0.005800`.
-- La dependencia lineal con género baja de `0.100951` a `0.002211`.
-- La reducción relativa de `|rho|` es aproximadamente `97.8%`.
+- La dependencia lineal absoluta con género (`abs_rho`) baja de `0.100951` a
+  `0.002211`.
+- La reducción relativa de `abs_rho` es aproximadamente `97.8%`.
 - La incertidumbre M2 genera `46,052` valores únicos en test, por lo que no está
   colapsada.
 - `EXT_NULL_COUNT` conserva los valores semánticos `{0, 1, 2, 3}`.
 
 ### Extras
 
-Run canónico:
+Ejecución canónica local de extras, reflejada en los outputs ejecutados del
+notebook:
 
 ```text
 results/extras/20260625_113552
@@ -157,7 +164,7 @@ results/extras/20260625_113552
 | LightGBM relacional | OOF AUC | 0.796264 |
 | XGBoost relacional | OOF AUC | 0.795414 |
 | Cuadrática FAIR alpha=0.5 | AUC test | 0.740491 |
-| Cuadrática FAIR alpha=0.5 | `|rho|` test | 0.039893 |
+| Cuadrática FAIR alpha=0.5 | abs_rho test | 0.039893 |
 | Cuadrática FAIR alpha=0.5 | DPD test | 0.046588 |
 | Cuadrática FAIR alpha=0.5 | EOD test | 0.036503 |
 
